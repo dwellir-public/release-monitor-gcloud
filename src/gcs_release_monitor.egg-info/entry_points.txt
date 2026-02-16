@@ -1,0 +1,2 @@
+[console_scripts]
+gcs-release-monitor = gcs_release_monitor.cli:main

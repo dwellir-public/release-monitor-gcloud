@@ -1,0 +1,63 @@
+poll_interval_seconds: 900
+state_dir: ./state
+temp_dir: /tmp/gcs-release-monitor
+
+gcs:
+  bucket: megaeth-public-node-packages
+  anonymous: false
+  use_gcloud_cli: true
+  # credentials_file: /path/to/service-account.json
+  include_prefixes: []
+  include_suffixes:
+    - .tar.gz
+    - .tgz
+  include_content_types:
+    - application/x-tar
+    - application/gzip
+    - application/octet-stream
+
+nextcloud:
+  base_url: https://nextcloud.example.com
+  username: releasebot
+  app_password: "REPLACE_ME"
+  remote_dir: release-mirror
+  verify_tls: true
+  create_public_share: true
+  share_permissions: 1
+  # share_password: optional-share-password
+  # share_expire_days: 30
+
+webhook:
+  url: https://release-filter.example.com:8787/v1/releases
+  shared_secret: "REPLACE_ME_WITH_LONG_RANDOM_SECRET"
+  timeout_seconds: 10
+  verify_tls: true
+
+chain:
+  organization: megaeth
+  repository: megaeth-rpc
+  common_name: MegaETH RPC
+  extra_info: "Binary mirrored from Google Cloud Storage to Nextcloud."
+  # client_name: geth
+  # chain_ids: [6342]
+  # genesis_hashes: ["0x..."]
+
+release_defaults:
+  urgent: false
+  priority: 3
+  due_date: P2D
+
+artifact_selection:
+  enabled: true
+  fallback_to_archive: true
+  rules:
+    - organization: megaeth
+      repository: megaeth-rpc
+      binary_patterns:
+        - rpc-node-*
+        - "*/rpc-node-*"
+      genesis_patterns:
+        - mainnet/genesis.json
+        - "*/mainnet/genesis.json"
+        - testnet/genesis.json
+        - "*/testnet/genesis.json"

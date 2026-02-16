@@ -1,0 +1,20 @@
+[Unit]
+Description=release-monitor-gcloud service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=release-monitor
+Group=release-monitor
+WorkingDirectory=/var/lib/release-monitor-gcloud
+ExecStart=${exec_start}
+Restart=always
+RestartSec=10
+StateDirectory=release-monitor-gcloud
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,11 @@
+run-once:
+  description: Run a single polling cycle immediately.
+
+run-once-dry-run:
+  description: Run one dry-run cycle (no uploads, no webhook delivery, no state mutation).
+
+show-effective-config:
+  description: Show the effective rendered monitor configuration with secrets redacted.
+
+service-restart:
+  description: Restart the systemd service now.

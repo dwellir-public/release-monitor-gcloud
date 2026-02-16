@@ -5,6 +5,13 @@ Python package + CLI command: `gcs-release-monitor`
 
 Lightweight polling service for release artifacts published in a Google Cloud Storage bucket.
 
+## Related repositories
+
+- `release-monitor-gcloud`: https://github.com/dwellir-public/release-monitor-gcloud
+- `release-filter`: https://github.com/dwellir-public/release-filter
+
+These repos can be connected via webhook functionality: `release-monitor-gcloud` sends signed release events to the `release-filter` webhook producer endpoint (`/v1/releases` by default).
+
 ## What it does
 
 1. Polls the configured GCS bucket every `poll_interval_seconds` (default 900 = 15 minutes).

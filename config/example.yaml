@@ -40,8 +40,8 @@ chain:
   repository: megaeth-rpc
   common_name: MegaETH RPC
   extra_info: "Binary mirrored from Google Cloud Storage to Nextcloud."
-  # client_name: geth
-  # chain_ids: [6342]
+  client_name: mega-reth
+  chain_ids: [4326]
   # genesis_hashes: ["0x..."]
 
 release_defaults:

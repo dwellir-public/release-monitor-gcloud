@@ -98,7 +98,8 @@ The monitor posts JSON with these keys:
 - `event_type`, `event_version`, `source`
 - `chain`
 - `release_meta` (`html_url`, `tag_name`) where `html_url` points to the primary artifact link and prefers direct Nextcloud download URLs when available.
-- `release` (GCS + Nextcloud metadata, including `download_url` and per-upload `uploads[*].download_url` when public shares are enabled)
+- `release` (GCS + Nextcloud metadata, including `download_url`, optional `release_notes`, and per-upload `uploads[*].download_url` when public shares are enabled)
+- optional top-level `release_note`/`release_notes` when notes were extracted from the archive
 - `result` (summary/priority fields expected by release-filter consumers)
 
 Signature headers:
@@ -126,6 +127,8 @@ When public shares are enabled, each uploaded file also gets a direct link in th
 
 You can define `artifact_selection.rules` per chain to extract specific files from tar archives.
 If extraction fails (missing members, parse error, unsupported archive), the monitor falls back to uploading the original archive when `fallback_to_archive: true`.
+
+For release notes, the monitor also scans archive members like `RELEASE_NOTES.txt`/`CHANGELOG.md` and extracts only the section matching the current release tag (for example `# v2.0.15`). When extraction succeeds, it includes the text in webhook payload fields `release_note`/`release_notes` and `release.release_notes`.
 
 You can also set optional defaults used when no chain-specific rule matches:
 

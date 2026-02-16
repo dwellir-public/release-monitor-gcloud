@@ -11,6 +11,7 @@ from .artifact_selection import ArtifactSelectionError, UploadCandidate, select_
 from .config import AppConfig
 from .gcs_client import GCSClient, is_candidate_archive
 from .nextcloud_client import NextcloudClient
+from .release_notes import ExtractedReleaseNotes, extract_release_notes_for_tag_from_archive
 from .state import StateStore
 from .types import ObjectMetadata, ProcessingRecord, Snapshot, now_iso
 from .webhook_client import WebhookClient
@@ -100,10 +101,22 @@ class MonitorService:
     def _process_object(self, obj: ObjectMetadata, dry_run: bool = False) -> ProcessingRecord:
         logger.info("Processing new object %s", obj.gs_url)
 
+        release_tag = extract_release_tag(obj.name, obj.generation)
+        extracted_notes: ExtractedReleaseNotes | None = None
+
         with tempfile.TemporaryDirectory(prefix="gcs-monitor-", dir=str(self.config.temp_dir)) as temp_dir:
             filename = Path(obj.name).name
             local_path = Path(temp_dir) / filename
             self.gcs.download_object(obj.name, local_path)
+
+            extracted_notes = extract_release_notes_for_tag_from_archive(local_path, release_tag)
+            if extracted_notes:
+                logger.info(
+                    "Extracted release notes for %s from member=%s",
+                    release_tag,
+                    extracted_notes.source_member,
+                )
+
             candidates = self._choose_upload_candidates(local_path, Path(temp_dir), obj)
 
             uploaded_items: list[dict[str, str | None]] = []
@@ -139,7 +152,12 @@ class MonitorService:
                     }
                 )
 
-        release_payload = self._build_release_payload(obj, uploaded_items)
+        release_payload = self._build_release_payload(
+            obj,
+            uploaded_items,
+            release_tag=release_tag,
+            extracted_notes=extracted_notes,
+        )
         if dry_run:
             logger.info(
                 "Dry run: would send one webhook for %s with %s uploaded artifacts (primary=%s)",
@@ -227,18 +245,20 @@ class MonitorService:
         if not share_url or not artifact_name:
             return None
         share_base = share_url.split("?", maxsplit=1)[0].rstrip("/")
-        return f"{share_base}/download/{quote(artifact_name, safe='')}"
+        return f"{share_base}/download/{quote(artifact_name, safe="")}"
 
     def _build_release_payload(
         self,
         obj: ObjectMetadata,
         uploaded_items: list[dict[str, str | None]],
+        release_tag: str | None = None,
+        extracted_notes: ExtractedReleaseNotes | None = None,
     ) -> dict:
         if not uploaded_items:
             raise RuntimeError(f"uploaded_items is empty for {obj.object_id}")
 
         primary_link = self._artifact_link(uploaded_items[0])
-        tag = extract_release_tag(obj.name, obj.generation)
+        tag = release_tag or extract_release_tag(obj.name, obj.generation)
         chain = {
             "organization": self.config.chain.organization,
             "repository": self.config.chain.repository,
@@ -263,6 +283,15 @@ class MonitorService:
             f"Uploaded {len(uploaded_items)} artifact(s). Size={obj.size} bytes, updated={obj.updated}.\n\n"
             f"Artifact links:\n{links_block}"
         )
+        if extracted_notes:
+            summary += f"\n\nRelease notes extracted from archive member `{extracted_notes.source_member}`."
+
+        key_changes = [f"Artifact source: {obj.gs_url}"] + [
+            f"Mirrored {item['artifact_type']}: {self._artifact_link(item)}"
+            for item in uploaded_items
+        ]
+        if extracted_notes:
+            key_changes.append(f"Release notes source: {extracted_notes.source_member}")
 
         payload = {
             "event_type": "gcs_release_detected",
@@ -307,13 +336,15 @@ class MonitorService:
                 "due_date": self.config.release_defaults.due_date,
                 "explicit_deadline": None,
                 "summary": summary,
-                "key_changes": [f"Artifact source: {obj.gs_url}"] + [
-                    f"Mirrored {item['artifact_type']}: {self._artifact_link(item)}"
-                    for item in uploaded_items
-                ],
+                "key_changes": key_changes,
                 "reasoning": "Artifact-based release signal from bucket metadata.",
             },
         }
+        if extracted_notes:
+            payload["release_note"] = extracted_notes.text
+            payload["release_notes"] = extracted_notes.text
+            payload["release"]["release_notes"] = extracted_notes.text
+            payload["release"]["release_notes_source"] = extracted_notes.source_member
         return payload
 
 

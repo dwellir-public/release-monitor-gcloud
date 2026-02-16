@@ -8,6 +8,7 @@ gcs:
   use_gcloud_cli: true
   # credentials_file: /path/to/service-account.json
   include_prefixes: []
+  # For scoped test runs, set e.g. [v2.0.15/] and then clear it for production.
   include_suffixes:
     - .tar.gz
     - .tgz
@@ -23,6 +24,7 @@ nextcloud:
   remote_dir: release-mirror
   verify_tls: true
   create_public_share: true
+  # create_public_share=true enables share_url and derived download_url in webhook payloads.
   share_permissions: 1
   # share_password: optional-share-password
   # share_expire_days: 30
@@ -45,11 +47,16 @@ chain:
 release_defaults:
   urgent: false
   priority: 3
+  # Allowed values: 1 (urgent), 3 (normal), 4 (low)
   due_date: P2D
+  # Allowed values: P1D, P2D, P5D
 
 artifact_selection:
   enabled: true
   fallback_to_archive: true
+  # Optional defaults if no rule matches the chain:
+  # default_binary_patterns: ["rpc-node-*", "*/rpc-node-*"]
+  # default_genesis_patterns: ["mainnet/genesis.json", "*/mainnet/genesis.json"]
   rules:
     - organization: megaeth
       repository: megaeth-rpc

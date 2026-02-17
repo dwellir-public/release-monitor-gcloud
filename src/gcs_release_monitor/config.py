@@ -13,6 +13,11 @@ class ConfigError(ValueError):
     pass
 
 
+DELIVERY_MODE_FULL = "full"
+DELIVERY_MODE_WEBHOOK_ONLY = "webhook_only"
+_VALID_DELIVERY_MODES = {DELIVERY_MODE_FULL, DELIVERY_MODE_WEBHOOK_ONLY}
+
+
 @dataclass(frozen=True)
 class GCSConfig:
     bucket: str
@@ -82,18 +87,19 @@ class ArtifactSelectionConfig:
 
 @dataclass(frozen=True)
 class AppConfig:
+    delivery_mode: str
     poll_interval_seconds: int
     state_dir: Path
     temp_dir: Path
     gcs: GCSConfig
-    nextcloud: NextcloudConfig
+    nextcloud: NextcloudConfig | None
     webhook: WebhookConfig
     chain: ChainConfig
     release_defaults: ReleaseDefaults
     artifact_selection: ArtifactSelectionConfig
 
 
-_REQUIRED_TOP_LEVEL = ("gcs", "nextcloud", "webhook", "chain")
+_REQUIRED_TOP_LEVEL = ("gcs", "webhook", "chain")
 
 
 def _required(raw: dict[str, Any], key: str, parent: str = "config") -> Any:
@@ -227,6 +233,11 @@ def load_config(path: str | Path) -> AppConfig:
     for key in _REQUIRED_TOP_LEVEL:
         _required(raw, key)
 
+    delivery_mode = str(raw.get("delivery_mode") or DELIVERY_MODE_FULL).strip().lower()
+    if delivery_mode not in _VALID_DELIVERY_MODES:
+        valid = ", ".join(sorted(_VALID_DELIVERY_MODES))
+        raise ConfigError(f"delivery_mode must be one of {valid}")
+
     state_dir = Path(str(raw.get("state_dir") or "./state")).expanduser().resolve()
     temp_dir = Path(str(raw.get("temp_dir") or "/tmp/gcs-release-monitor")).expanduser().resolve()
 
@@ -234,12 +245,22 @@ def load_config(path: str | Path) -> AppConfig:
     if poll_interval < 30:
         raise ConfigError("poll_interval_seconds must be >= 30")
 
+    nextcloud_raw = raw.get("nextcloud")
+    if nextcloud_raw is not None and not isinstance(nextcloud_raw, dict):
+        raise ConfigError("nextcloud must be a mapping")
+
+    if delivery_mode == DELIVERY_MODE_FULL:
+        nextcloud = _parse_nextcloud(_required(raw, "nextcloud"))
+    else:
+        nextcloud = _parse_nextcloud(nextcloud_raw) if isinstance(nextcloud_raw, dict) else None
+
     return AppConfig(
+        delivery_mode=delivery_mode,
         poll_interval_seconds=poll_interval,
         state_dir=state_dir,
         temp_dir=temp_dir,
         gcs=_parse_gcs(raw["gcs"]),
-        nextcloud=_parse_nextcloud(raw["nextcloud"]),
+        nextcloud=nextcloud,
         webhook=_parse_webhook(raw["webhook"]),
         chain=_parse_chain(raw["chain"]),
         release_defaults=_parse_release_defaults(raw),

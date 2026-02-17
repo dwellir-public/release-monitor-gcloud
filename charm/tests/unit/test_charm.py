@@ -228,12 +228,42 @@ def test_build_render_config_maps_charm_keys_to_app_schema():
 
     rendered = _build_render_config(cfg, secrets, webhook, gcs_credentials_file=None)
 
+    assert rendered["delivery_mode"] == "full"
     assert rendered["poll_interval_seconds"] == 123
     assert rendered["gcs"]["bucket"] == "bucket-a"
     assert rendered["nextcloud"]["base_url"] == "https://cloud.example"
     assert rendered["chain"]["organization"] == "org"
     assert rendered["release_defaults"]["due_date"] == "P2D"
     assert rendered["artifact_selection"]["default_binary_patterns"] == ["rpc-node-*"]
+
+
+def test_build_render_config_webhook_only_omits_nextcloud_section():
+    cfg = {
+        "delivery-mode": "webhook_only",
+        "gcs-bucket": "bucket-a",
+        "chain-organization": "org",
+        "chain-repository": "repo",
+        "chain-ids": "[]",
+        "chain-genesis-hashes": "[]",
+        "gcs-include-prefixes": "[]",
+        "gcs-include-suffixes": "[]",
+        "gcs-include-content-types": "[]",
+        "artifact-selection-default-binary-patterns": "[]",
+        "artifact-selection-default-genesis-patterns": "[]",
+        "artifact-selection-rules": "[]",
+    }
+    secrets = SecretBundle(
+        nextcloud_username=None,
+        nextcloud_app_password=None,
+        nextcloud_share_password=None,
+        gcs_service_account_json=None,
+    )
+    webhook = WebhookResolution(url="https://hook", shared_secret="secret", source="relation")
+
+    rendered = _build_render_config(cfg, secrets, webhook, gcs_credentials_file=None)
+
+    assert rendered["delivery_mode"] == "webhook_only"
+    assert "nextcloud" not in rendered
 
 
 def test_install_event_creates_runtime_dirs_and_unit_file(
@@ -432,6 +462,55 @@ def test_single_unit_guard_blocks_scale_greater_than_one(
     assert isinstance(out.unit_status, BlockedStatus)
     assert "single-unit charm; scale to 1" in out.unit_status.message
     assert any(cmd[:3] == ["systemctl", "disable", "--now"] for cmd in runner.commands)
+
+
+def test_webhook_only_mode_allows_missing_nextcloud_secret(
+    ctx: Context,
+    base_config: dict[str, Any],
+    base_secrets: list[Secret],
+    patched_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    patched_paths["wheel_path"].write_bytes(b"wheel")
+    runner = FakeRunner(venv_dir=patched_paths["venv_dir"])
+    _patch_runner(monkeypatch, runner)
+
+    config = dict(base_config)
+    config["delivery-mode"] = "webhook_only"
+    config["nextcloud-credentials-secret-id"] = ""
+    secrets = [secret for secret in base_secrets if secret.id != "secret:nextcloud"]
+
+    out = ctx.run(
+        ctx.on.config_changed(),
+        _state(config=config, secrets=secrets, wheel_path=patched_paths["wheel_path"]),
+    )
+
+    assert isinstance(out.unit_status, ActiveStatus)
+    rendered = yaml.safe_load(patched_paths["config_path"].read_text(encoding="utf-8"))
+    assert rendered["delivery_mode"] == "webhook_only"
+    assert "nextcloud" not in rendered
+
+
+def test_invalid_delivery_mode_blocks(
+    ctx: Context,
+    base_config: dict[str, Any],
+    base_secrets: list[Secret],
+    patched_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    patched_paths["wheel_path"].write_bytes(b"wheel")
+    runner = FakeRunner(venv_dir=patched_paths["venv_dir"])
+    _patch_runner(monkeypatch, runner)
+
+    config = dict(base_config)
+    config["delivery-mode"] = "invalid"
+    out = ctx.run(
+        ctx.on.config_changed(),
+        _state(config=config, secrets=base_secrets, wheel_path=patched_paths["wheel_path"]),
+    )
+
+    assert isinstance(out.unit_status, BlockedStatus)
+    assert "delivery-mode must be one of full, webhook_only" in out.unit_status.message
 
 
 def test_run_once_and_dry_run_actions_invoke_expected_flags(

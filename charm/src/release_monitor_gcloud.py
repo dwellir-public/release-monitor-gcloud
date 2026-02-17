@@ -154,18 +154,26 @@ class ReleaseMonitorRuntime:
 
     def _resolve_secret_bundle(self) -> SecretBundle:
         config = dict(self._charm.config)
-        nextcloud_secret_id = str(config.get("nextcloud-credentials-secret-id", "")).strip()
-        if not nextcloud_secret_id:
-            raise ReconcileError("missing required config: nextcloud-credentials-secret-id")
-        nextcloud_content = self._read_secret_content(nextcloud_secret_id)
+        delivery_mode = str(config.get("delivery-mode", "full")).strip().lower()
+        if delivery_mode not in {"full", "webhook_only"}:
+            raise ReconcileError("invalid config: delivery-mode must be one of full, webhook_only")
 
-        username = str(nextcloud_content.get("username", "")).strip()
-        app_password = str(nextcloud_content.get("app_password", "")).strip()
-        share_password = str(nextcloud_content.get("share_password", "")).strip() or None
-        if not username:
-            raise ReconcileError("missing required secret field username in nextcloud-credentials")
-        if not app_password:
-            raise ReconcileError("missing required secret field app_password in nextcloud-credentials")
+        username: str | None = None
+        app_password: str | None = None
+        share_password: str | None = None
+        if delivery_mode == "full":
+            nextcloud_secret_id = str(config.get("nextcloud-credentials-secret-id", "")).strip()
+            if not nextcloud_secret_id:
+                raise ReconcileError("missing required config: nextcloud-credentials-secret-id")
+            nextcloud_content = self._read_secret_content(nextcloud_secret_id)
+
+            username = str(nextcloud_content.get("username", "")).strip()
+            app_password = str(nextcloud_content.get("app_password", "")).strip()
+            share_password = str(nextcloud_content.get("share_password", "")).strip() or None
+            if not username:
+                raise ReconcileError("missing required secret field username in nextcloud-credentials")
+            if not app_password:
+                raise ReconcileError("missing required secret field app_password in nextcloud-credentials")
 
         gcs_service_account_json: str | None = None
         anonymous = bool(config.get("gcs-anonymous", False))

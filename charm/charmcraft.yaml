@@ -43,6 +43,10 @@ config:
       type: string
       default: /var/lib/release-monitor-gcloud/tmp
       description: Temporary download directory passed to app config.
+    delivery-mode:
+      type: string
+      default: full
+      description: Artifact delivery mode. full uploads to Nextcloud; webhook_only skips upload and sends webhook only.
 
     gcs-bucket:
       type: string
@@ -76,11 +80,11 @@ config:
     nextcloud-base-url:
       type: string
       default: ""
-      description: Required. Nextcloud base URL.
+      description: Required when delivery-mode=full. Nextcloud base URL.
     nextcloud-remote-dir:
       type: string
       default: ""
-      description: Required. Remote Nextcloud root directory for uploads.
+      description: Required when delivery-mode=full. Remote Nextcloud root directory for uploads.
     nextcloud-verify-tls:
       type: boolean
       default: true
@@ -100,7 +104,7 @@ config:
     nextcloud-credentials-secret-id:
       type: string
       default: ""
-      description: Required. Secret ID with username/app_password, optional share_password.
+      description: Required when delivery-mode=full. Secret ID with username/app_password, optional share_password.
 
     webhook-url:
       type: string

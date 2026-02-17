@@ -42,6 +42,7 @@ def test_diff_snapshot_detects_add_and_remove() -> None:
 def test_build_release_payload_includes_all_uploaded_links() -> None:
     service = object.__new__(MonitorService)
     service.config = SimpleNamespace(
+        delivery_mode="full",
         chain=SimpleNamespace(
             organization="megaeth",
             repository="megaeth-rpc",
@@ -90,6 +91,7 @@ def test_build_release_payload_includes_all_uploaded_links() -> None:
 def test_build_release_payload_includes_extracted_release_notes() -> None:
     service = object.__new__(MonitorService)
     service.config = SimpleNamespace(
+        delivery_mode="full",
         chain=SimpleNamespace(
             organization="megaeth",
             repository="megaeth-rpc",

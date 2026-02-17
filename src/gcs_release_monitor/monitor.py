@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from .artifact_selection import ArtifactSelectionError, UploadCandidate, select_upload_candidates
-from .config import AppConfig
+from .config import AppConfig, DELIVERY_MODE_WEBHOOK_ONLY
 from .gcs_client import GCSClient, is_candidate_archive
 from .nextcloud_client import NextcloudClient
 from .release_notes import ExtractedReleaseNotes, extract_release_notes_for_tag_from_archive
@@ -26,7 +26,7 @@ class MonitorService:
     def __init__(self, config: AppConfig):
         self.config = config
         self.gcs = GCSClient(config.gcs)
-        self.nextcloud = NextcloudClient(config.nextcloud)
+        self.nextcloud = NextcloudClient(config.nextcloud) if config.nextcloud else None
         self.webhook = WebhookClient(config.webhook)
         self.store = StateStore(config.state_dir)
 
@@ -80,7 +80,8 @@ class MonitorService:
             logger.info("Dry run complete: no state or snapshot files updated")
 
     def close(self) -> None:
-        self.nextcloud.close()
+        if self.nextcloud:
+            self.nextcloud.close()
         self.gcs.close()
 
     def _new_candidate_objects(self, previous: Snapshot | None, current: Snapshot) -> list[ObjectMetadata]:
@@ -100,6 +101,7 @@ class MonitorService:
 
     def _process_object(self, obj: ObjectMetadata, dry_run: bool = False) -> ProcessingRecord:
         logger.info("Processing new object %s", obj.gs_url)
+        webhook_only = self.config.delivery_mode == DELIVERY_MODE_WEBHOOK_ONLY
 
         release_tag = extract_release_tag(obj.name, obj.generation)
         extracted_notes: ExtractedReleaseNotes | None = None
@@ -121,23 +123,45 @@ class MonitorService:
 
             uploaded_items: list[dict[str, str | None]] = []
             for candidate in candidates:
-                remote_path = self._build_remote_path(candidate.output_name, obj)
                 if dry_run:
-                    nextcloud_url = f"dry-run://nextcloud/{remote_path}"
+                    if webhook_only:
+                        remote_path = self._webhook_only_path(obj, candidate)
+                        nextcloud_url = self._webhook_only_link(obj, candidate)
+                        logger.info(
+                            "Dry run: webhook_only mode would skip upload for artifact_type=%s source_member=%s",
+                            candidate.artifact_type,
+                            candidate.source_member or candidate.output_name,
+                        )
+                    else:
+                        remote_path = self._build_remote_path(candidate.output_name, obj)
+                        nextcloud_url = f"dry-run://nextcloud/{remote_path}"
+                        logger.info(
+                            "Dry run: would upload artifact_type=%s source_member=%s to %s",
+                            candidate.artifact_type,
+                            candidate.source_member or candidate.output_name,
+                            remote_path,
+                        )
                     share_url: str | None = None
                     download_url: str | None = None
+                    if self.config.nextcloud and self.config.nextcloud.create_public_share:
+                        logger.info("Dry run: would create Nextcloud public share for %s", remote_path)
+                elif webhook_only:
+                    remote_path = self._webhook_only_path(obj, candidate)
+                    nextcloud_url = self._webhook_only_link(obj, candidate)
+                    share_url = None
+                    download_url = None
                     logger.info(
-                        "Dry run: would upload artifact_type=%s source_member=%s to %s",
+                        "Webhook-only mode: skipping Nextcloud upload for artifact_type=%s source_member=%s",
                         candidate.artifact_type,
                         candidate.source_member or candidate.output_name,
-                        remote_path,
                     )
-                    if self.config.nextcloud.create_public_share:
-                        logger.info("Dry run: would create Nextcloud public share for %s", remote_path)
                 else:
+                    remote_path = self._build_remote_path(candidate.output_name, obj)
+                    if not self.nextcloud:
+                        raise RuntimeError("nextcloud client is not configured")
                     nextcloud_url = self.nextcloud.upload_file(candidate.local_path, remote_path)
                     share_url = None
-                    if self.config.nextcloud.create_public_share:
+                    if self.config.nextcloud and self.config.nextcloud.create_public_share:
                         share_url = self.nextcloud.create_public_share(remote_path)
                     download_url = self._public_download_url(share_url, candidate.output_name)
                 uploaded_items.append(
@@ -171,6 +195,11 @@ class MonitorService:
         now = now_iso()
         if dry_run:
             logger.info("Dry run processed object_id=%s (no upload/webhook performed)", obj.object_id)
+        elif webhook_only:
+            logger.info(
+                "Processed object_id=%s in webhook_only mode and delivered webhook",
+                obj.object_id,
+            )
         else:
             logger.info("Processed object_id=%s and delivered webhook", obj.object_id)
         primary = uploaded_items[0]
@@ -225,6 +254,8 @@ class MonitorService:
         ]
 
     def _build_remote_path(self, filename: str, obj: ObjectMetadata) -> str:
+        if not self.config.nextcloud:
+            raise RuntimeError("nextcloud configuration is not available in webhook_only mode")
         remote_root = self.config.nextcloud.remote_dir
         organization = self.config.chain.organization
         filename_with_generation = f"{filename}-g{obj.generation}"
@@ -235,6 +266,18 @@ class MonitorService:
                 filename_with_generation,
             ]
         )
+
+    @staticmethod
+    def _webhook_only_path(obj: ObjectMetadata, candidate: UploadCandidate) -> str:
+        if candidate.source_member:
+            return f"{obj.name}::{candidate.source_member}"
+        return obj.name
+
+    @staticmethod
+    def _webhook_only_link(obj: ObjectMetadata, candidate: UploadCandidate) -> str:
+        if candidate.source_member:
+            return f"{obj.gs_url}#member={quote(candidate.source_member, safe='')}"
+        return obj.gs_url
 
     @staticmethod
     def _artifact_link(item: dict[str, str | None]) -> str:
@@ -256,6 +299,7 @@ class MonitorService:
     ) -> dict:
         if not uploaded_items:
             raise RuntimeError(f"uploaded_items is empty for {obj.object_id}")
+        webhook_only = self.config.delivery_mode == DELIVERY_MODE_WEBHOOK_ONLY
 
         primary_link = self._artifact_link(uploaded_items[0])
         tag = release_tag or extract_release_tag(obj.name, obj.generation)
@@ -278,16 +322,27 @@ class MonitorService:
             for item in uploaded_items
         ]
         links_block = "\n".join(link_lines)
+        if webhook_only:
+            summary_prefix = f"New release artifacts detected in gs://{obj.bucket}/{obj.name}. "
+            mode_summary = (
+                f"Selected {len(uploaded_items)} artifact(s) for webhook-only delivery "
+                "without Nextcloud upload. "
+            )
+            key_change_prefix = "Selected"
+        else:
+            summary_prefix = f"New release artifacts mirrored from gs://{obj.bucket}/{obj.name}. "
+            mode_summary = f"Uploaded {len(uploaded_items)} artifact(s). "
+            key_change_prefix = "Mirrored"
         summary = (
-            f"New release artifacts mirrored from gs://{obj.bucket}/{obj.name}. "
-            f"Uploaded {len(uploaded_items)} artifact(s). Size={obj.size} bytes, updated={obj.updated}.\n\n"
+            f"{summary_prefix}"
+            f"{mode_summary}Size={obj.size} bytes, updated={obj.updated}.\n\n"
             f"Artifact links:\n{links_block}"
         )
         if extracted_notes:
             summary += f"\n\nRelease notes extracted from archive member `{extracted_notes.source_member}`."
 
         key_changes = [f"Artifact source: {obj.gs_url}"] + [
-            f"Mirrored {item['artifact_type']}: {self._artifact_link(item)}"
+            f"{key_change_prefix} {item['artifact_type']}: {self._artifact_link(item)}"
             for item in uploaded_items
         ]
         if extracted_notes:
@@ -301,6 +356,7 @@ class MonitorService:
                 "bucket": obj.bucket,
                 "object_id": obj.object_id,
                 "detected_at": now_iso(),
+                "delivery_mode": self.config.delivery_mode,
             },
             "chain": chain,
             "release_meta": {
@@ -321,6 +377,7 @@ class MonitorService:
                 "updated": obj.updated,
                 "time_created": obj.time_created,
                 "gs_url": obj.gs_url,
+                "delivery_mode": self.config.delivery_mode,
                 "nextcloud_path": uploaded_items[0]["nextcloud_path"],
                 "nextcloud_url": uploaded_items[0]["nextcloud_url"],
                 "share_url": uploaded_items[0]["share_url"],

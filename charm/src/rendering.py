@@ -49,6 +49,13 @@ def build_render_config(
     *,
     gcs_credentials_file: str | None,
 ) -> dict[str, Any]:
+    delivery_mode = str(config.get("delivery-mode", "full")).strip().lower()
+    if delivery_mode not in {"full", "webhook_only"}:
+        raise ReconcileError(
+            "invalid config: delivery-mode must be one of full, webhook_only",
+            stop_service=False,
+        )
+
     chain_repository = _non_empty(config, "chain-repository")
     rules = parse_json_array_option(
         str(config.get("artifact-selection-rules", "[]")), "artifact-selection-rules"
@@ -58,27 +65,35 @@ def build_render_config(
             "artifact-selection-rules must be a JSON array of objects", stop_service=False
         )
 
-    nextcloud: dict[str, Any] = {
-        "base_url": _non_empty(config, "nextcloud-base-url"),
-        "username": secrets.nextcloud_username,
-        "app_password": secrets.nextcloud_app_password,
-        "remote_dir": _non_empty(config, "nextcloud-remote-dir"),
-        "verify_tls": bool(config.get("nextcloud-verify-tls", True)),
-        "create_public_share": bool(config.get("nextcloud-create-public-share", True)),
-        "share_permissions": int(config.get("nextcloud-share-permissions", 1)),
-    }
-    if secrets.nextcloud_share_password:
-        nextcloud["share_password"] = secrets.nextcloud_share_password
+    nextcloud: dict[str, Any] | None = None
+    if delivery_mode == "full":
+        if not secrets.nextcloud_username:
+            raise ReconcileError("missing required secret field username in nextcloud-credentials")
+        if not secrets.nextcloud_app_password:
+            raise ReconcileError("missing required secret field app_password in nextcloud-credentials")
 
-    expire_days = int(config.get("nextcloud-share-expire-days", 0))
-    if expire_days > 0:
-        nextcloud["share_expire_days"] = expire_days
+        nextcloud = {
+            "base_url": _non_empty(config, "nextcloud-base-url"),
+            "username": secrets.nextcloud_username,
+            "app_password": secrets.nextcloud_app_password,
+            "remote_dir": _non_empty(config, "nextcloud-remote-dir"),
+            "verify_tls": bool(config.get("nextcloud-verify-tls", True)),
+            "create_public_share": bool(config.get("nextcloud-create-public-share", True)),
+            "share_permissions": int(config.get("nextcloud-share-permissions", 1)),
+        }
+        if secrets.nextcloud_share_password:
+            nextcloud["share_password"] = secrets.nextcloud_share_password
+
+        expire_days = int(config.get("nextcloud-share-expire-days", 0))
+        if expire_days > 0:
+            nextcloud["share_expire_days"] = expire_days
 
     chain_ids = _parse_chain_ids(
         parse_json_array_option(str(config.get("chain-ids", "[]")), "chain-ids")
     )
 
-    return {
+    rendered: dict[str, Any] = {
+        "delivery_mode": delivery_mode,
         "poll_interval_seconds": int(config.get("poll-interval-seconds", 900)),
         "state_dir": str(config.get("state-dir", str(c.STATE_DIR))),
         "temp_dir": str(config.get("temp-dir", str(c.TEMP_DIR))),
@@ -97,7 +112,6 @@ def build_render_config(
                 str(config.get("gcs-include-content-types", "[]")), "gcs-include-content-types"
             ),
         },
-        "nextcloud": nextcloud,
         "webhook": {
             "url": webhook.url,
             "shared_secret": webhook.shared_secret,
@@ -134,6 +148,9 @@ def build_render_config(
             "rules": rules,
         },
     }
+    if nextcloud is not None:
+        rendered["nextcloud"] = nextcloud
+    return rendered
 
 
 def render_service_unit(*, log_level: str) -> str:

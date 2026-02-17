@@ -11,8 +11,8 @@ class ReconcileError(ValueError):
 
 @dataclass(frozen=True)
 class SecretBundle:
-    nextcloud_username: str
-    nextcloud_app_password: str
+    nextcloud_username: str | None
+    nextcloud_app_password: str | None
     nextcloud_share_password: str | None
     gcs_service_account_json: str | None
 

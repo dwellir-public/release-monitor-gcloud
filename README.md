@@ -1,141 +1,149 @@
 # release-monitor-gcloud
 
-Repository name: `release-monitor-gcloud`  
-Python package + CLI command: `gcs-release-monitor`
+`release-monitor-gcloud` contains:
 
-Lightweight polling service for release artifacts published in a Google Cloud Storage bucket.
+1. The Python monitor service (`gcs-release-monitor`) that polls GCS and mirrors releases to Nextcloud.
+2. A Juju machine charm (`charm/`) that runs the monitor as a `systemd` service and manages config/secrets/resources.
+
+## Repository layout
+
+- `src/gcs_release_monitor/`: monitor application code.
+- `tests/`: monitor unit tests.
+- `config/`: local monitor config examples.
+- `scripts/`: local helper scripts.
+- `charm/`: charm source, packaging config, charm tests.
+- `docs/`: implementation plans and related docs.
+
+## Prerequisites
+
+- Python 3.10+
+- `make`
+- `charmcraft` (for charm packaging)
+- Juju 3.x + a target model/controller (for deploy/integration)
+
+## Quick commands
+
+Run `make help` for the full list.
+
+- Setup monitor dev env: `make bootstrap`
+- Setup charm deps in same env: `make bootstrap-charm`
+- Monitor tests: `make test`
+- Charm unit tests: `make test-charm-unit`
+- Build monitor wheel: `make wheel`
+- Build charm artifact: `make charm-pack`
+
+## Step-by-step: checkout to deployed charm (with wheel)
+
+### 1. Checkout and bootstrap
+
+```bash
+git clone <repo-url>
+cd release-monitor-gcloud
+make bootstrap
+make bootstrap-charm
+```
+
+### 2. Run tests
+
+```bash
+make test
+make test-charm-unit
+```
+
+### 3. Build artifacts
+
+```bash
+make wheel
+make charm-pack
+make wheel-path
+make charm-path
+```
+
+### 4. Prepare Juju secrets
+
+Create required secrets (example commands):
+
+```bash
+# Nextcloud credentials (required)
+juju add-secret nextcloud-creds username='<nextcloud-user>' app_password='<nextcloud-app-password>' share_password='<optional-share-password>'
+
+# GCS service account (required unless gcs-anonymous=true or gcs-use-gcloud-cli=true)
+juju add-secret gcs-service-account service_account_json='{"type":"service_account", ...}'
+
+# Fallback webhook secret (required when relation does not provide secret)
+juju add-secret webhook-shared shared_secret='<webhook-shared-secret>'
+```
+
+Capture secret IDs from `juju list-secrets` and grant them to the app after deploy:
+
+```bash
+juju grant-secret <nextcloud-secret-id> release-monitor-gcloud
+juju grant-secret <gcs-secret-id> release-monitor-gcloud
+juju grant-secret <webhook-secret-id> release-monitor-gcloud
+```
+
+### 5. Deploy charm with wheel resource
+
+```bash
+make charm-deploy-with-wheel JUJU_MODEL=<model-name> APP_NAME=release-monitor-gcloud
+```
+
+### 6. Configure charm
+
+```bash
+juju config -m <model-name> release-monitor-gcloud \
+  gcs-bucket='<bucket>' \
+  nextcloud-base-url='https://<nextcloud-host>' \
+  nextcloud-remote-dir='release-mirror' \
+  chain-organization='<org>' \
+  chain-repository='<repo>' \
+  nextcloud-credentials-secret-id='<nextcloud-secret-id>' \
+  gcs-service-account-secret-id='<gcs-secret-id>' \
+  webhook-url='https://<release-filter-host>/v1/releases' \
+  webhook-shared-secret-secret-id='<webhook-secret-id>'
+```
+
+### 7. Verify deployment
+
+```bash
+make charm-status JUJU_MODEL=<model-name> APP_NAME=release-monitor-gcloud
+make charm-run-once-dry-run JUJU_MODEL=<model-name> APP_NAME=release-monitor-gcloud
+```
+
+## Refresh procedures
+
+### Refresh charm code
+
+```bash
+make charm-pack
+make charm-refresh JUJU_MODEL=<model-name> APP_NAME=release-monitor-gcloud
+```
+
+### Refresh wheel resource
+
+```bash
+make wheel
+make charm-attach-wheel JUJU_MODEL=<model-name> APP_NAME=release-monitor-gcloud
+```
+
+## Charm integration test
+
+`charm/tests/integration/test_charm.py` expects `RELEASE_MONITOR_WHEEL`:
+
+```bash
+RELEASE_MONITOR_WHEEL=/abs/path/to/gcs_release_monitor-<version>.whl make test-charm-integration
+```
+
+## Local monitor-only smoke flow
+
+These targets configure local `release-filter` snap ingestion and run one monitor cycle:
+
+```bash
+make local-test
+make local-test-dry-run
+```
 
 ## Related repositories
 
 - `release-monitor-gcloud`: https://github.com/dwellir-public/release-monitor-gcloud
 - `release-filter`: https://github.com/dwellir-public/release-filter
-
-These repos can be connected via webhook functionality: `release-monitor-gcloud` sends signed release events to the `release-filter` webhook producer endpoint (`/v1/releases` by default).
-
-## What it does
-
-1. Polls the configured GCS bucket every `poll_interval_seconds` (default 900 = 15 minutes).
-2. Stores a local snapshot of object metadata (`snapshot-latest.json`).
-3. Diffs current snapshot with the previous snapshot to detect new objects.
-4. Filters to release artifact candidates using metadata + suffix/content-type checks.
-5. Downloads each new artifact archive from GCS.
-6. Optionally extracts target files (e.g. binary + genesis) using chain-specific rules.
-7. Uploads selected files to Nextcloud via WebDAV (or falls back to uploading the archive).
-8. Optionally creates a public Nextcloud share URL and direct artifact download URLs.
-9. Sends one signed webhook event per detected release object to release-filter, including links to all uploaded artifacts for that release.
-
-GCS access modes:
-- `use_gcloud_cli: true`: uses local `gcloud` auth/session (`gcloud storage ls/cp`).
-- `anonymous: true`: uses unauthenticated public bucket APIs.
-- `credentials_file`: uses a service account JSON key.
-
-The service is idempotent across restarts via `state/state.json` keyed by `object_name#generation`.
-
-## Install
-
-```bash
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -e .[dev]
-```
-
-## Configure
-
-```bash
-cp config/example.yaml config/local.yaml
-# edit config/local.yaml
-```
-
-## Run
-
-Single cycle:
-
-```bash
-gcs-release-monitor --config config/local.yaml --once
-```
-
-Dry run (no upload/webhook/state writes):
-
-```bash
-gcs-release-monitor --config config/local.yaml --once --dry-run
-```
-
-Continuous:
-
-```bash
-gcs-release-monitor --config config/local.yaml
-```
-
-List helper targets:
-
-```bash
-make help
-```
-
-Local integration test (configures local `release-filter` snap + runs one cycle):
-
-```bash
-make local-test
-```
-
-Dry-run variant:
-
-```bash
-make local-test DRY_RUN=1
-# or
-make local-test-dry-run
-```
-
-Local integration prerequisites:
-- local `release-filter` snap installed
-- webhook ingestion enabled on `release-filter`
-- `network-bind` connected for `release-filter` (required for listening on `:8787`)
-
-## Webhook payload contract
-
-The monitor posts JSON with these keys:
-
-- `event_type`, `event_version`, `source`
-- `chain`
-- `release_meta` (`html_url`, `tag_name`) where `html_url` points to the primary artifact link and prefers direct Nextcloud download URLs when available.
-- `release` (GCS + Nextcloud metadata, including `download_url`, optional `release_notes`, and per-upload `uploads[*].download_url` when public shares are enabled)
-- optional top-level `release_note`/`release_notes` when notes were extracted from the archive
-- `result` (summary/priority fields expected by release-filter consumers)
-
-Signature headers:
-
-- `X-Release-Timestamp`: Unix seconds
-- `X-Release-Signature`: `sha256=<hmac>` over `<timestamp>.<json_body>`
-
-## State files
-
-- `state/state.json`: processed object IDs and delivery metadata.
-- `state/snapshot-latest.json`: latest object snapshot.
-- `state/snapshot-previous.json`: previous object snapshot.
-
-## Nextcloud path layout
-
-Uploads are written as:
-
-- `<remote_dir>/<organization>/<filename>-g<generation>`
-
-When public shares are enabled, each uploaded file also gets a direct link in this form:
-
-- `<share_url>/download/<filename>`
-
-## Artifact extraction and fallback
-
-You can define `artifact_selection.rules` per chain to extract specific files from tar archives.
-If extraction fails (missing members, parse error, unsupported archive), the monitor falls back to uploading the original archive when `fallback_to_archive: true`.
-
-For release notes, the monitor also scans archive members like `RELEASE_NOTES.txt`/`CHANGELOG.md` and extracts only the section matching the current release tag (for example `# v2.0.15`). When extraction succeeds, it includes the text in webhook payload fields `release_note`/`release_notes` and `release.release_notes`.
-
-You can also set optional defaults used when no chain-specific rule matches:
-
-- `artifact_selection.default_binary_patterns`
-- `artifact_selection.default_genesis_patterns`
-
-The example config includes a MegaETH rule:
-
-- binary pattern: `rpc-node-*`
-- genesis pattern preference: `mainnet/genesis.json` then `testnet/genesis.json`

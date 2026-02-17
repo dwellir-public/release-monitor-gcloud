@@ -70,7 +70,10 @@ Use `webhook_only` for local testing unless explicitly testing Nextcloud upload/
    - `make wheel-path` (copy absolute path)
 2. Run integration tests with wheel env var:
    - `RELEASE_MONITOR_WHEEL=/abs/path/to/gcs_release_monitor-<version>.whl make test-charm-integration`
-3. Ensure target Juju/controller context is correct before running integration tests.
+3. The target enforces controller safety:
+   - refuses to run unless `juju whoami` reports controller `local`
+   - normalizes wheel path to absolute before invoking pytest
+4. Ensure `juju whoami --format=json` shows the expected `local` controller/model before invocation.
 
 Note:
 Current integration tests intentionally verify blocked-state behavior and do not exercise Nextcloud upload or webhook delivery.

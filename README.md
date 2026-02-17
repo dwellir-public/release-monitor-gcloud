@@ -152,6 +152,11 @@ make charm-attach-wheel JUJU_MODEL=<model-name> APP_NAME=release-monitor-gcloud
 RELEASE_MONITOR_WHEEL=/abs/path/to/gcs_release_monitor-<version>.whl make test-charm-integration
 ```
 
+Guardrails:
+
+1. The target refuses to run unless the current Juju controller is `local`.
+2. The wheel path is normalized to an absolute path before running tests.
+
 ## Local deploy flow (webhook-only default)
 
 Use this mode for local testing unless explicitly testing Nextcloud upload behavior.

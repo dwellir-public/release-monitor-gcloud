@@ -34,7 +34,7 @@ help:
 	@echo "  make bootstrap-charm         Install charm unit/integration dependencies into the same venv."
 	@echo "  make test                    Run monitor unit tests (tests/)."
 	@echo "  make test-charm-unit         Run charm unit tests (charm/tests/unit)."
-	@echo "  make test-charm-integration  Run charm integration tests (set RELEASE_MONITOR_WHEEL=/abs/path.whl)."
+	@echo "  make test-charm-integration  Run charm integration tests on controller 'local' (set RELEASE_MONITOR_WHEEL=/abs/path.whl)."
 	@echo "  make test-all                Run monitor tests + charm unit tests."
 	@echo ""
 	@echo "Artifacts:"
@@ -80,9 +80,26 @@ test-charm-unit:
 	. "$(VENV)/bin/activate" && cd "$(CHARM_DIR)" && PYTHONPATH=src python -m pytest -q tests/unit
 
 test-charm-integration:
-	@test -n "$(RELEASE_MONITOR_WHEEL)" || (echo "Set RELEASE_MONITOR_WHEEL=/abs/path/to/gcs_release_monitor-*.whl"; exit 1)
-	@test -f "$(RELEASE_MONITOR_WHEEL)" || (echo "Wheel not found: $(RELEASE_MONITOR_WHEEL)"; exit 1)
-	. "$(VENV)/bin/activate" && cd "$(CHARM_DIR)" && RELEASE_MONITOR_WHEEL="$(RELEASE_MONITOR_WHEEL)" PYTHONPATH=src python -m pytest -q tests/integration -s
+	@set -euo pipefail; \
+	controller=$$(juju whoami --format=json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("controller",""))'); \
+	if [ -z "$$controller" ]; then \
+		echo "Could not determine current Juju controller. Are you logged in?"; \
+		exit 1; \
+	fi; \
+	if [ "$$controller" != "local" ]; then \
+		echo "Refusing to run integration tests on controller '$$controller' (expected 'local')."; \
+		exit 1; \
+	fi; \
+	if [ -z "$(RELEASE_MONITOR_WHEEL)" ]; then \
+		echo "Set RELEASE_MONITOR_WHEEL=/abs/path/to/gcs_release_monitor-*.whl"; \
+		exit 1; \
+	fi; \
+	if [ ! -f "$(RELEASE_MONITOR_WHEEL)" ]; then \
+		echo "Wheel not found: $(RELEASE_MONITOR_WHEEL)"; \
+		exit 1; \
+	fi; \
+	wheel_abs=$$(realpath "$(RELEASE_MONITOR_WHEEL)"); \
+	. "$(VENV)/bin/activate" && cd "$(CHARM_DIR)" && RELEASE_MONITOR_WHEEL="$$wheel_abs" PYTHONPATH=src python -m pytest -q tests/integration -s
 
 test-all: test test-charm-unit
 

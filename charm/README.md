@@ -47,6 +47,8 @@ Integration tests need a wheel path:
 RELEASE_MONITOR_WHEEL=/abs/path/to/gcs_release_monitor-<version>.whl make test-charm-integration
 ```
 
+The target checks that the active Juju controller is `local` and refuses execution otherwise.
+
 ## Deploy charm
 
 Recommended flow from repo root:

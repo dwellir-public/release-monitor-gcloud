@@ -134,6 +134,51 @@ make charm-attach-wheel JUJU_MODEL=<model-name> APP_NAME=release-monitor-gcloud
 RELEASE_MONITOR_WHEEL=/abs/path/to/gcs_release_monitor-<version>.whl make test-charm-integration
 ```
 
+## Local test setup goal: webhook to `release-filter` without Nextcloud upload
+
+### Current behavior and limitation
+
+Current monitor behavior does not support this exact mode:
+
+1. Non-dry-run always attempts Nextcloud upload before sending webhook.
+2. Dry-run skips upload, but also skips webhook delivery.
+
+So today there is no built-in mode that both:
+
+1. skips Nextcloud upload, and
+2. still sends webhook to `release-filter`.
+
+### What is required to support it
+
+To support a true local webhook-only flow, implement:
+
+1. A delivery mode in monitor config (for example `delivery_mode: full|webhook_only`).
+2. Monitor processing path branch to bypass Nextcloud upload in `webhook_only`.
+3. Webhook payload construction in `webhook_only` (for example GCS links/metadata without Nextcloud links).
+4. Charm config key mapped to the new monitor config field.
+5. Charm reconcile logic changes so Nextcloud secret requirements are optional in `webhook_only`.
+6. Unit/integration tests for both modes and for regression safety on existing full mode.
+
+### Local deploy flow today (closest behavior)
+
+You can still deploy locally and validate charm + webhook plumbing, but upload cannot be skipped in non-dry-run.
+
+1. Build artifacts:
+   - `make wheel`
+   - `make charm-pack`
+2. Deploy `release-filter` (same Juju model) and enable webhook ingestion (`ingest-webhook-*` config).
+3. Create monitor secrets and grant to app:
+   - `nextcloud-credentials-secret-id` (required today)
+   - `gcs-service-account-secret-id` (unless `gcs-anonymous=true` or `gcs-use-gcloud-cli=true`)
+   - `webhook-shared-secret-secret-id` (if not using relation secret)
+4. Deploy monitor charm with wheel:
+   - `make charm-deploy-with-wheel JUJU_MODEL=<model> APP_NAME=release-monitor-gcloud`
+5. Configure monitor webhook URL/secret to point to `release-filter` ingestion endpoint.
+6. Validate with:
+   - `make charm-status JUJU_MODEL=<model> APP_NAME=release-monitor-gcloud`
+   - `make charm-run-once-dry-run JUJU_MODEL=<model> APP_NAME=release-monitor-gcloud` (no upload, no webhook)
+7. For real webhook delivery with current code, `run-once` will require reachable Nextcloud and will perform upload.
+
 ## Local monitor-only smoke flow
 
 These targets configure local `release-filter` snap ingestion and run one monitor cycle:

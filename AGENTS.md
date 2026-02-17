@@ -43,6 +43,15 @@ This file describes the repository components and the standard operator/develope
 - Refresh charm: `make charm-refresh`
 - Refresh wheel resource: `make charm-attach-wheel`
 
+## Current behavior caveat (webhook-only local testing)
+
+Current monitor behavior has no mode that both skips Nextcloud upload and still sends webhook:
+
+1. `run-once` uploads, then webhook.
+2. `run-once-dry-run` skips upload and skips webhook.
+
+Any SOP requiring webhook delivery currently also requires a reachable Nextcloud target.
+
 ## SOP 1: Build and run tests
 
 1. `make bootstrap`
@@ -60,6 +69,9 @@ This file describes the repository components and the standard operator/develope
    - `RELEASE_MONITOR_WHEEL=/abs/path/to/gcs_release_monitor-<version>.whl make test-charm-integration`
 3. Ensure target Juju/controller context is correct before running integration tests.
 
+Note:
+Current integration tests intentionally verify blocked-state behavior and do not exercise Nextcloud upload or webhook delivery.
+
 ## SOP 3: Deploy or refresh the charm
 
 1. Build charm:
@@ -74,6 +86,12 @@ This file describes the repository components and the standard operator/develope
    - `make charm-pack`
    - `make charm-refresh JUJU_MODEL=<model> APP_NAME=release-monitor-gcloud`
 
+Local test setup with `release-filter`:
+
+1. Deploy/prepare `release-filter` in the same model and enable webhook ingestion.
+2. Configure monitor `webhook-url` to the `release-filter` endpoint.
+3. Configure matching webhook shared secret between both services.
+
 ## SOP 4: Deploy or refresh the gcloud monitoring wheel resource
 
 1. Build latest wheel:
@@ -83,6 +101,19 @@ This file describes the repository components and the standard operator/develope
 3. Verify resource and unit status:
    - `juju resources -m <model> release-monitor-gcloud`
    - `make charm-status JUJU_MODEL=<model> APP_NAME=release-monitor-gcloud`
+
+## SOP 5: Required work for true webhook-only local mode
+
+Goal: deploy monitor charm locally, skip upload, still send webhook to `release-filter`.
+
+Required implementation steps:
+
+1. Add monitor config mode (for example `delivery_mode: full|webhook_only`).
+2. Update monitor processing logic to bypass Nextcloud upload in `webhook_only`.
+3. Define webhook payload behavior without Nextcloud links in `webhook_only`.
+4. Add charm config option and render mapping for the mode.
+5. Make Nextcloud secret checks conditional in charm reconcile for `webhook_only`.
+6. Add unit/integration tests for mode behavior and regressions.
 
 ## Security notes
 

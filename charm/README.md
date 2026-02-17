@@ -79,3 +79,19 @@ make charm-attach-wheel JUJU_MODEL=<model> APP_NAME=release-monitor-gcloud
 - `run-once-dry-run`
 - `show-effective-config`
 - `service-restart`
+
+## Local webhook-only test mode (design requirement)
+
+Current behavior:
+
+1. `run-once` uploads to Nextcloud and then sends webhook.
+2. `run-once-dry-run` skips upload and also skips webhook.
+
+This means the charm cannot currently run a mode that skips upload while still sending webhook events.
+
+To support that mode, charm and monitor changes are required:
+
+1. Introduce a monitor config mode (for example `delivery_mode=webhook_only`).
+2. Add charm config mapping for that mode in `charmcraft.yaml`.
+3. Make Nextcloud secret validation conditional in reconcile when in webhook-only mode.
+4. Update payload generation path and tests for webhook-only semantics.

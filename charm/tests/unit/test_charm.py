@@ -118,7 +118,7 @@ def base_secrets() -> list[Secret]:
             {"service_account_json": '{"type":"service_account"}'},
             id="secret:gcs",
         ),
-        Secret({"shared_secret": "fallback-shared-secret"}, id="secret:webhook-fallback"),
+        Secret({"shared-secret": "fallback-shared-secret"}, id="secret:webhook-fallback"),
     ]
 
 
@@ -327,7 +327,7 @@ def test_missing_required_secret_field_blocks(
     bad_secrets = [
         Secret({"username": "jonathan"}, id="secret:nextcloud"),
         Secret({"service_account_json": "{}"}, id="secret:gcs"),
-        Secret({"shared_secret": "fallback-shared-secret"}, id="secret:webhook-fallback"),
+        Secret({"shared-secret": "fallback-shared-secret"}, id="secret:webhook-fallback"),
     ]
 
     state = _state(config=base_config, secrets=bad_secrets, wheel_path=patched_paths["wheel_path"])
@@ -360,7 +360,9 @@ def test_relation_secret_id_precedence_over_fallback(
         },
     )
 
-    secrets = list(base_secrets) + [Secret({"shared_secret": "relation-secret"}, id="secret:relation")]
+    secrets = list(base_secrets) + [
+        Secret({"shared-secret": "relation-secret"}, id="secret:relation")
+    ]
     state = _state(
         config=base_config,
         secrets=secrets,

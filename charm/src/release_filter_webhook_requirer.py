@@ -38,10 +38,10 @@ class ReleaseFilterWebhookRequirer:
 
             if relation_secret_id:
                 relation_secret = self._read_secret_content(relation_secret_id)
-                shared_secret = str(relation_secret.get("shared_secret", "")).strip()
+                shared_secret = str(relation_secret.get("shared-secret", "")).strip()
                 if not shared_secret:
                     raise ReconcileError(
-                        "missing required secret field shared_secret in relation secret_id"
+                        "missing required secret field shared-secret in relation secret_id"
                     )
                 return WebhookResolution(
                     url=webhook_url,
@@ -59,10 +59,10 @@ class ReleaseFilterWebhookRequirer:
             fallback_secret_id = str(config.get("webhook-shared-secret-secret-id", "")).strip()
             if fallback_secret_id:
                 fallback_content = self._read_secret_content(fallback_secret_id)
-                shared_secret = str(fallback_content.get("shared_secret", "")).strip()
+                shared_secret = str(fallback_content.get("shared-secret", "")).strip()
                 if not shared_secret:
                     raise ReconcileError(
-                        "missing required secret field shared_secret in webhook-shared-secret"
+                        "missing required secret field shared-secret in webhook-shared-secret"
                     )
                 return WebhookResolution(
                     url=webhook_url,
@@ -83,8 +83,8 @@ class ReleaseFilterWebhookRequirer:
             raise ReconcileError("missing required config: webhook-shared-secret-secret-id")
 
         fallback_content = self._read_secret_content(fallback_secret_id)
-        shared_secret = str(fallback_content.get("shared_secret", "")).strip()
+        shared_secret = str(fallback_content.get("shared-secret", "")).strip()
         if not shared_secret:
-            raise ReconcileError("missing required secret field shared_secret in webhook-shared-secret")
+            raise ReconcileError("missing required secret field shared-secret in webhook-shared-secret")
 
         return WebhookResolution(url=fallback_url, shared_secret=shared_secret, source="config-fallback")

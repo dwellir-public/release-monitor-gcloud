@@ -121,7 +121,7 @@ config:
     webhook-shared-secret-secret-id:
       type: string
       default: ""
-      description: Fallback secret ID containing key shared_secret.
+      description: Fallback secret ID containing key shared-secret.
 
     chain-organization:
       type: string

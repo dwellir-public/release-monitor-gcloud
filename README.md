@@ -71,7 +71,7 @@ juju add-secret nextcloud-creds username='<nextcloud-user>' app_password='<nextc
 juju add-secret gcs-service-account service_account_json='{"type":"service_account", ...}'
 
 # Fallback webhook secret (required when relation does not provide secret)
-juju add-secret webhook-shared shared_secret='<webhook-shared-secret>'
+juju add-secret webhook-shared shared-secret='<webhook-shared-secret>'
 ```
 
 Capture secret IDs from `juju list-secrets` and grant them to the app after deploy:

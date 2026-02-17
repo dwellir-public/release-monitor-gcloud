@@ -9,7 +9,8 @@ import yaml
 from ops.model import ActiveStatus, BlockedStatus
 from ops.testing import Context, Relation, Resource, Secret, State
 
-import charm as charm_module
+import constants as constants_module
+import release_monitor_gcloud as runtime_module
 from charm import (
     APP_DIR,
     CONFIG_PATH,
@@ -131,16 +132,18 @@ def patched_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, 
     service_path = tmp_path / "etc" / "systemd" / "system" / "release-monitor-gcloud.service"
     venv_dir = tmp_path / "opt" / "release-monitor-gcloud" / "venv"
 
-    monkeypatch.setattr(charm_module, "APP_DIR", app_dir)
-    monkeypatch.setattr(charm_module, "STATE_DIR", state_dir)
-    monkeypatch.setattr(charm_module, "TEMP_DIR", temp_dir)
-    monkeypatch.setattr(charm_module, "SECRETS_DIR", secrets_dir)
-    monkeypatch.setattr(charm_module, "ETC_DIR", etc_dir)
-    monkeypatch.setattr(charm_module, "CONFIG_PATH", etc_dir / "config.yaml")
-    monkeypatch.setattr(charm_module, "SERVICE_PATH", service_path)
-    monkeypatch.setattr(charm_module, "VENV_DIR", venv_dir)
-    monkeypatch.setattr(charm_module, "GCS_CREDENTIALS_PATH", secrets_dir / "gcs-service-account.json")
-    monkeypatch.setattr(charm_module.shutil, "chown", lambda *_a, **_k: None)
+    monkeypatch.setattr(constants_module, "APP_DIR", app_dir)
+    monkeypatch.setattr(constants_module, "STATE_DIR", state_dir)
+    monkeypatch.setattr(constants_module, "TEMP_DIR", temp_dir)
+    monkeypatch.setattr(constants_module, "SECRETS_DIR", secrets_dir)
+    monkeypatch.setattr(constants_module, "ETC_DIR", etc_dir)
+    monkeypatch.setattr(constants_module, "CONFIG_PATH", etc_dir / "config.yaml")
+    monkeypatch.setattr(constants_module, "SERVICE_PATH", service_path)
+    monkeypatch.setattr(constants_module, "VENV_DIR", venv_dir)
+    monkeypatch.setattr(
+        constants_module, "GCS_CREDENTIALS_PATH", secrets_dir / "gcs-service-account.json"
+    )
+    monkeypatch.setattr(runtime_module.shutil, "chown", lambda *_a, **_k: None)
 
     return {
         "app_dir": app_dir,

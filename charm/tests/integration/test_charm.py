@@ -7,11 +7,12 @@ import os
 from pathlib import Path
 
 import pytest
-import yaml
 from pytest_operator.plugin import OpsTest
 
-METADATA = yaml.safe_load(Path("./metadata.yaml").read_text(encoding="utf-8"))
-APP_NAME = METADATA["name"]
+import yaml
+
+CHARMCRAFT = yaml.safe_load(Path("./charmcraft.yaml").read_text(encoding="utf-8"))
+APP_NAME = CHARMCRAFT["name"]
 
 
 def _wheel_resource_path() -> Path | None:

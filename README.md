@@ -2,7 +2,7 @@
 
 `release-monitor-gcloud` contains:
 
-1. The Python monitor service (`gcs-release-monitor`) that polls GCS and mirrors releases to Nextcloud.
+1. The Python monitor service (`gcs-release-monitor`) that polls GCS and emits signed release webhooks.
 2. A Juju machine charm (`charm/`) that runs the monitor as a `systemd` service and manages config/secrets/resources.
 
 ## Repository layout
@@ -64,7 +64,7 @@ make charm-path
 Create required secrets (example commands):
 
 ```bash
-# Nextcloud credentials (required)
+# Nextcloud credentials (required only for delivery-mode=full)
 juju add-secret nextcloud-creds username='<nextcloud-user>' app_password='<nextcloud-app-password>' share_password='<optional-share-password>'
 
 # GCS service account (required unless gcs-anonymous=true or gcs-use-gcloud-cli=true)
@@ -77,9 +77,14 @@ juju add-secret webhook-shared shared_secret='<webhook-shared-secret>'
 Capture secret IDs from `juju list-secrets` and grant them to the app after deploy:
 
 ```bash
-juju grant-secret <nextcloud-secret-id> release-monitor-gcloud
 juju grant-secret <gcs-secret-id> release-monitor-gcloud
 juju grant-secret <webhook-secret-id> release-monitor-gcloud
+```
+
+Only for `delivery-mode=full`:
+
+```bash
+juju grant-secret <nextcloud-secret-id> release-monitor-gcloud
 ```
 
 ### 5. Deploy charm with wheel resource
@@ -93,14 +98,26 @@ make charm-deploy-with-wheel JUJU_MODEL=<model-name> APP_NAME=release-monitor-gc
 ```bash
 juju config -m <model-name> release-monitor-gcloud \
   gcs-bucket='<bucket>' \
-  nextcloud-base-url='https://<nextcloud-host>' \
-  nextcloud-remote-dir='release-mirror' \
   chain-organization='<org>' \
   chain-repository='<repo>' \
-  nextcloud-credentials-secret-id='<nextcloud-secret-id>' \
   gcs-service-account-secret-id='<gcs-secret-id>' \
   webhook-url='https://<release-filter-host>/v1/releases' \
   webhook-shared-secret-secret-id='<webhook-secret-id>'
+```
+
+For local testing, use `webhook_only` unless explicitly testing full uploads:
+
+```bash
+juju config -m <model-name> release-monitor-gcloud delivery-mode='webhook_only'
+```
+
+For `delivery-mode=full`, also set:
+
+```bash
+juju config -m <model-name> release-monitor-gcloud \
+  nextcloud-base-url='https://<nextcloud-host>' \
+  nextcloud-remote-dir='release-mirror' \
+  nextcloud-credentials-secret-id='<nextcloud-secret-id>'
 ```
 
 ### 7. Verify deployment
@@ -108,6 +125,7 @@ juju config -m <model-name> release-monitor-gcloud \
 ```bash
 make charm-status JUJU_MODEL=<model-name> APP_NAME=release-monitor-gcloud
 make charm-run-once-dry-run JUJU_MODEL=<model-name> APP_NAME=release-monitor-gcloud
+make charm-run-once JUJU_MODEL=<model-name> APP_NAME=release-monitor-gcloud
 ```
 
 ## Refresh procedures
@@ -134,50 +152,26 @@ make charm-attach-wheel JUJU_MODEL=<model-name> APP_NAME=release-monitor-gcloud
 RELEASE_MONITOR_WHEEL=/abs/path/to/gcs_release_monitor-<version>.whl make test-charm-integration
 ```
 
-## Local test setup goal: webhook to `release-filter` without Nextcloud upload
+## Local deploy flow (webhook-only default)
 
-### Current behavior and limitation
-
-Current monitor behavior does not support this exact mode:
-
-1. Non-dry-run always attempts Nextcloud upload before sending webhook.
-2. Dry-run skips upload, but also skips webhook delivery.
-
-So today there is no built-in mode that both:
-
-1. skips Nextcloud upload, and
-2. still sends webhook to `release-filter`.
-
-### What is required to support it
-
-To support a true local webhook-only flow, implement:
-
-1. A delivery mode in monitor config (for example `delivery_mode: full|webhook_only`).
-2. Monitor processing path branch to bypass Nextcloud upload in `webhook_only`.
-3. Webhook payload construction in `webhook_only` (for example GCS links/metadata without Nextcloud links).
-4. Charm config key mapped to the new monitor config field.
-5. Charm reconcile logic changes so Nextcloud secret requirements are optional in `webhook_only`.
-6. Unit/integration tests for both modes and for regression safety on existing full mode.
-
-### Local deploy flow today (closest behavior)
-
-You can still deploy locally and validate charm + webhook plumbing, but upload cannot be skipped in non-dry-run.
+Use this mode for local testing unless explicitly testing Nextcloud upload behavior.
 
 1. Build artifacts:
    - `make wheel`
    - `make charm-pack`
-2. Deploy `release-filter` (same Juju model) and enable webhook ingestion (`ingest-webhook-*` config).
-3. Create monitor secrets and grant to app:
-   - `nextcloud-credentials-secret-id` (required today)
+2. Deploy `release-filter` in the same model and enable webhook ingestion (`ingest-webhook-*` settings).
+3. Create and grant required monitor secrets:
    - `gcs-service-account-secret-id` (unless `gcs-anonymous=true` or `gcs-use-gcloud-cli=true`)
    - `webhook-shared-secret-secret-id` (if not using relation secret)
-4. Deploy monitor charm with wheel:
+4. Deploy monitor with wheel:
    - `make charm-deploy-with-wheel JUJU_MODEL=<model> APP_NAME=release-monitor-gcloud`
-5. Configure monitor webhook URL/secret to point to `release-filter` ingestion endpoint.
-6. Validate with:
+5. Configure webhook-only delivery:
+   - `juju config -m <model> release-monitor-gcloud delivery-mode=webhook_only`
+6. Configure core settings:
+   - `juju config -m <model> release-monitor-gcloud gcs-bucket='<bucket>' chain-organization='<org>' chain-repository='<repo>' webhook-url='https://<release-filter-host>/v1/releases' webhook-shared-secret-secret-id='<secret-id>'`
+7. Validate:
    - `make charm-status JUJU_MODEL=<model> APP_NAME=release-monitor-gcloud`
-   - `make charm-run-once-dry-run JUJU_MODEL=<model> APP_NAME=release-monitor-gcloud` (no upload, no webhook)
-7. For real webhook delivery with current code, `run-once` will require reachable Nextcloud and will perform upload.
+   - `make charm-run-once JUJU_MODEL=<model> APP_NAME=release-monitor-gcloud`
 
 ## Local monitor-only smoke flow
 
@@ -187,6 +181,9 @@ These targets configure local `release-filter` snap ingestion and run one monito
 make local-test
 make local-test-dry-run
 ```
+
+Note:
+`make local-test` defaults to `config/local.webhook-only.yaml` (`delivery_mode: webhook_only`). Keep this default for local tests unless you are explicitly testing Nextcloud uploads.
 
 ## Related repositories
 

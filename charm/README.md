@@ -59,6 +59,15 @@ make charm-deploy-with-wheel JUJU_MODEL=<model> APP_NAME=release-monitor-gcloud
 
 Then set required config and secret IDs using `juju config`.
 
+Local testing default:
+
+```bash
+juju config -m <model> release-monitor-gcloud delivery-mode=webhook_only
+```
+
+In `webhook_only`, Nextcloud config and `nextcloud-credentials-secret-id` are not required.
+Use `delivery-mode=full` only when explicitly testing upload/share behavior.
+
 ## Refresh charm
 
 ```bash
@@ -80,18 +89,17 @@ make charm-attach-wheel JUJU_MODEL=<model> APP_NAME=release-monitor-gcloud
 - `show-effective-config`
 - `service-restart`
 
-## Local webhook-only test mode (design requirement)
+## Delivery modes
 
-Current behavior:
+The charm supports:
 
-1. `run-once` uploads to Nextcloud and then sends webhook.
-2. `run-once-dry-run` skips upload and also skips webhook.
+1. `delivery-mode=full`:
+   - uploads artifacts to Nextcloud
+   - optionally creates public shares
+   - sends webhook payloads with Nextcloud links
+2. `delivery-mode=webhook_only`:
+   - skips Nextcloud upload
+   - still sends webhook payloads for detected artifacts
+   - uses GCS-based links in payload data
 
-This means the charm cannot currently run a mode that skips upload while still sending webhook events.
-
-To support that mode, charm and monitor changes are required:
-
-1. Introduce a monitor config mode (for example `delivery_mode=webhook_only`).
-2. Add charm config mapping for that mode in `charmcraft.yaml`.
-3. Make Nextcloud secret validation conditional in reconcile when in webhook-only mode.
-4. Update payload generation path and tests for webhook-only semantics.
+For local tests, use `webhook_only` unless the test explicitly requires Nextcloud upload.

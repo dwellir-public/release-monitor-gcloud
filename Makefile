@@ -4,7 +4,7 @@ VENV ?= .venv
 PYTHON ?= $(VENV)/bin/python
 PIP ?= $(VENV)/bin/pip
 
-CONFIG ?= config/local.yaml
+CONFIG ?= config/local.webhook-only.yaml
 WEBHOOK_SECRET ?= gcs-local-integration-secret-20260216
 DRY_RUN ?= 0
 
@@ -53,7 +53,7 @@ help:
 	@echo "  make charm-run-once-dry-run  Run 'run-once-dry-run' charm action."
 	@echo ""
 	@echo "Local monitor smoke flow:"
-	@echo "  make local-test              Configure local release-filter snap + run one monitor cycle."
+	@echo "  make local-test              Configure local release-filter snap + run one monitor cycle (default config is webhook_only)."
 	@echo "  make local-test DRY_RUN=1    Same as local-test, monitor runs in dry-run mode."
 	@echo "  make local-test-dry-run      Shortcut for DRY_RUN=1."
 	@echo ""

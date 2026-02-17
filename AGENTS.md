@@ -6,7 +6,7 @@ This file describes the repository components and the standard operator/develope
 
 1. Monitor application (`gcs-release-monitor`)
    - Location: `src/gcs_release_monitor/`
-   - Purpose: poll GCS, mirror artifacts to Nextcloud, emit signed release webhooks.
+   - Purpose: poll GCS and emit signed release webhooks.
    - Tests: `tests/`
 
 2. Charm (`release-monitor-gcloud`)
@@ -42,15 +42,18 @@ This file describes the repository components and the standard operator/develope
 - Deploy charm: `make charm-deploy` or `make charm-deploy-with-wheel`
 - Refresh charm: `make charm-refresh`
 - Refresh wheel resource: `make charm-attach-wheel`
+- Local smoke run: `make local-test` (defaults to `config/local.webhook-only.yaml`)
 
-## Current behavior caveat (webhook-only local testing)
+## Delivery mode defaults
 
-Current monitor behavior has no mode that both skips Nextcloud upload and still sends webhook:
+Use `webhook_only` for local testing unless explicitly testing Nextcloud upload/share behavior.
 
-1. `run-once` uploads, then webhook.
-2. `run-once-dry-run` skips upload and skips webhook.
-
-Any SOP requiring webhook delivery currently also requires a reachable Nextcloud target.
+1. `delivery-mode=webhook_only`:
+   - skips Nextcloud upload
+   - still sends webhook payloads
+2. `delivery-mode=full`:
+   - uploads to Nextcloud
+   - then sends webhook payloads with Nextcloud-derived links
 
 ## SOP 1: Build and run tests
 
@@ -80,9 +83,11 @@ Current integration tests intentionally verify blocked-state behavior and do not
    - `make charm-deploy-with-wheel JUJU_MODEL=<model> APP_NAME=release-monitor-gcloud`
    - or deploy charm only: `make charm-deploy JUJU_MODEL=<model> APP_NAME=release-monitor-gcloud`
 3. Configure charm with required options and secret IDs via `juju config`.
-4. Check status:
+4. For local tests, set:
+   - `juju config -m <model> release-monitor-gcloud delivery-mode=webhook_only`
+5. Check status:
    - `make charm-status JUJU_MODEL=<model> APP_NAME=release-monitor-gcloud`
-5. Refresh charm code later:
+6. Refresh charm code later:
    - `make charm-pack`
    - `make charm-refresh JUJU_MODEL=<model> APP_NAME=release-monitor-gcloud`
 
@@ -91,6 +96,7 @@ Local test setup with `release-filter`:
 1. Deploy/prepare `release-filter` in the same model and enable webhook ingestion.
 2. Configure monitor `webhook-url` to the `release-filter` endpoint.
 3. Configure matching webhook shared secret between both services.
+4. Keep monitor in `delivery-mode=webhook_only` unless explicitly validating Nextcloud uploads.
 
 ## SOP 4: Deploy or refresh the gcloud monitoring wheel resource
 
@@ -102,24 +108,30 @@ Local test setup with `release-filter`:
    - `juju resources -m <model> release-monitor-gcloud`
    - `make charm-status JUJU_MODEL=<model> APP_NAME=release-monitor-gcloud`
 
-## SOP 5: Required work for true webhook-only local mode
+## SOP 5: Local webhook-only deployment and run
 
-Goal: deploy monitor charm locally, skip upload, still send webhook to `release-filter`.
+Goal: deploy monitor charm locally, skip upload, and still send webhook to `release-filter`.
 
-Required implementation steps:
-
-1. Add monitor config mode (for example `delivery_mode: full|webhook_only`).
-2. Update monitor processing logic to bypass Nextcloud upload in `webhook_only`.
-3. Define webhook payload behavior without Nextcloud links in `webhook_only`.
-4. Add charm config option and render mapping for the mode.
-5. Make Nextcloud secret checks conditional in charm reconcile for `webhook_only`.
-6. Add unit/integration tests for mode behavior and regressions.
+1. Build and deploy artifacts:
+   - `make wheel`
+   - `make charm-pack`
+   - `make charm-deploy-with-wheel JUJU_MODEL=<model> APP_NAME=release-monitor-gcloud`
+2. Create and grant required secrets:
+   - `gcs-service-account-secret-id` (unless anonymous/gcloud-cli mode)
+   - `webhook-shared-secret-secret-id` (if not using relation secret)
+3. Configure local webhook-only mode:
+   - `juju config -m <model> release-monitor-gcloud delivery-mode=webhook_only`
+4. Configure monitor endpoint and chain metadata:
+   - `juju config -m <model> release-monitor-gcloud gcs-bucket='<bucket>' chain-organization='<org>' chain-repository='<repo>' webhook-url='https://<release-filter>/v1/releases'`
+5. Run and verify:
+   - `make charm-run-once JUJU_MODEL=<model> APP_NAME=release-monitor-gcloud`
+   - `make charm-status JUJU_MODEL=<model> APP_NAME=release-monitor-gcloud`
 
 ## Security notes
 
 1. Never commit plaintext credentials, service account JSON, or webhook secrets.
 2. Use Juju secrets for:
-   - `nextcloud-credentials-secret-id`
+   - `nextcloud-credentials-secret-id` (required only in `delivery-mode=full`)
    - `gcs-service-account-secret-id`
    - `webhook-shared-secret-secret-id`
 3. Grant secret access to the application (`juju grant-secret <secret-id> <app-name>`).

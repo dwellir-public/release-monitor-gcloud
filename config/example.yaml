@@ -1,6 +1,7 @@
 poll_interval_seconds: 900
 state_dir: ./state
 temp_dir: /tmp/gcs-release-monitor
+delivery_mode: full
 
 gcs:
   bucket: megaeth-public-node-packages

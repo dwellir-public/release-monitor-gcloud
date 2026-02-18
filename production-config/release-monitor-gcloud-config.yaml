@@ -10,13 +10,19 @@ charm: release-monitor-gcloud
 settings:
   artifact-selection-default-binary-patterns:
     default: '[]'
-    description: JSON array of default binary extraction patterns.
+    description: |
+      JSON array of default binary extraction patterns.
+      Rendered runtime key: artifact_selection.default_binary_patterns.
+      Example: '["rpc-node-*", "*/rpc-node-*"]'
     source: default
     type: string
     value: '[]'
   artifact-selection-default-genesis-patterns:
     default: '[]'
-    description: JSON array of default genesis extraction patterns.
+    description: |
+      JSON array of default genesis extraction patterns.
+      Rendered runtime key: artifact_selection.default_genesis_patterns.
+      Example: '["mainnet/genesis.json", "*/mainnet/genesis.json"]'
     source: default
     type: string
     value: '[]'
@@ -34,56 +40,73 @@ settings:
     value: true
   artifact-selection-rules:
     default: '[]'
-    description: JSON array of artifact selection rule objects.
-    source: default
+    description: |
+      JSON array of artifact selection rule objects.
+      Rendered runtime key: artifact_selection.rules.
+      Example: '[{"organization":"megaeth","repository":"megaeth-rpc","binary_patterns":["rpc-node-*"],"genesis_patterns":["mainnet/genesis.json"]}]'
+    source: user
     type: string
-    value: '[]'
+    value: '[{"organization":"megaeth","repository":"megaeth-rpc","binary_patterns":["rpc-node-*","*/rpc-node-*"],"genesis_patterns":["mainnet/genesis.json","*/mainnet/genesis.json","testnet/genesis.json","*/testnet/genesis.json"]}]'
   chain-client-name:
     default: ""
     description: Optional client name.
-    source: default
+    source: user
     type: string
-    value: ""
+    value: mega-reth
   chain-common-name:
     default: ""
-    description: Display/common name. Empty falls back to chain-repository.
-    source: default
+    description: |
+      Display/common name. Empty falls back to chain-repository.
+      Rendered runtime key: chain.common_name.
+    source: user
     type: string
-    value: ""
+    value: MegaETH RPC
   chain-extra-info:
     default: ""
     description: Optional release metadata context.
-    source: default
+    source: user
     type: string
-    value: ""
+    value: Binary metadata detected from Google Cloud Storage and forwarded by webhook.
   chain-genesis-hashes:
     default: '[]'
-    description: JSON array of genesis hashes.
+    description: |
+      JSON array of genesis hashes.
+      Rendered runtime key: chain.genesis_hashes.
+      Example: '["0x1234..."]'
     source: default
     type: string
     value: '[]'
   chain-ids:
     default: '[]'
-    description: JSON array of integer chain IDs.
-    source: default
+    description: |
+      JSON array of integer chain IDs.
+      Rendered runtime key: chain.chain_ids.
+      Example: '[4326]'
+    source: user
     type: string
-    value: '[]'
+    value: '[4326]'
   chain-organization:
     default: ""
-    description: Required. Source chain organization.
-    source: default
+    description: |
+      Required. Source chain organization.
+      Rendered runtime key: chain.organization.
+    source: user
     type: string
-    value: ""
+    value: megaeth
   chain-repository:
     default: ""
-    description: Required. Source chain repository.
-    source: default
+    description: |
+      Required. Source chain repository.
+      Rendered runtime key: chain.repository.
+    source: user
     type: string
-    value: ""
+    value: megaeth-rpc
   delivery-mode:
     default: full
-    description: Artifact delivery mode. full uploads to Nextcloud; webhook_only skips
-      upload and sends webhook only.
+    description: |
+      Artifact delivery mode. full uploads to Nextcloud; webhook_only skips upload and sends webhook only.
+      Rendered runtime key: delivery_mode.
+      Example: webhook_only
     source: default
     type: string
     value: full
@@ -95,40 +118,54 @@ settings:
     value: false
   gcs-bucket:
     default: ""
-    description: Required. GCS bucket name.
-    source: default
+    description: |
+      Required. GCS bucket name.
+      Rendered runtime key: gcs.bucket.
+    source: user
     type: string
-    value: ""
+    value: megaeth-public-node-packages
   gcs-include-content-types:
     default: '[]'
-    description: JSON array of accepted MIME types.
-    source: default
+    description: |
+      JSON array of accepted MIME types.
+      Rendered runtime key: gcs.include_content_types.
+      Example: '["application/gzip", "application/octet-stream"]'
+    source: user
     type: string
-    value: '[]'
+    value: '["application/x-tar","application/gzip","application/octet-stream"]'
   gcs-include-prefixes:
     default: '[]'
-    description: JSON array of object name prefixes.
+    description: |
+      JSON array of object name prefixes.
+      Rendered runtime key: gcs.include_prefixes.
+      Example: '["v2.0.7/"]'
     source: default
     type: string
     value: '[]'
   gcs-include-suffixes:
     default: '[]'
-    description: JSON array of candidate archive suffixes.
-    source: default
+    description: |
+      JSON array of candidate archive suffixes.
+      Rendered runtime key: gcs.include_suffixes.
+      Example: '[".tar.gz", ".tgz"]'
+    source: user
     type: string
-    value: '[]'
+    value: '[".tar.gz",".tgz"]'
   gcs-service-account-secret-id:
     default: ""
-    description: Secret ID containing key service_account_json.
+    description: |
+      Secret ID containing key service_account_json.
+      Used when gcs-anonymous=false and gcs-use-gcloud-cli=false.
+      Rendered runtime key impact: writes gcs.credentials_file from secret content.
     source: default
     type: string
     value: ""
   gcs-use-gcloud-cli:
     default: false
     description: Use local gcloud CLI auth mode.
-    source: default
+    source: user
     type: boolean
-    value: false
+    value: true
   log-level:
     default: INFO
     description: CLI log level for gcs-release-monitor.
@@ -137,7 +174,9 @@ settings:
     value: INFO
   nextcloud-base-url:
     default: ""
-    description: Required when delivery-mode=full. Nextcloud base URL.
+    description: |
+      Required when delivery-mode=full. Nextcloud base URL.
+      Rendered runtime key: nextcloud.base_url.
     source: default
     type: string
     value: ""
@@ -149,15 +188,18 @@ settings:
     value: true
   nextcloud-credentials-secret-id:
     default: ""
-    description: Required when delivery-mode=full. Secret ID with username/app_password,
-      optional share_password.
+    description: |
+      Required when delivery-mode=full. Secret ID with username/app_password, optional share_password.
+      Rendered runtime keys sourced from this secret: nextcloud.username, nextcloud.app_password, nextcloud.share_password.
     source: default
     type: string
     value: ""
   nextcloud-remote-dir:
     default: ""
-    description: Required when delivery-mode=full. Remote Nextcloud root directory
-      for uploads.
+    description: |
+      Required when delivery-mode=full. Remote Nextcloud root directory for uploads.
+      Rendered runtime key: nextcloud.remote_dir.
+      Example: EXTERNAL/FILESHARES/CLIENT_BINARIES
     source: default
     type: string
     value: ""
@@ -181,7 +223,9 @@ settings:
     value: true
   poll-interval-seconds:
     default: 900
-    description: Polling interval for release monitor loop.
+    description: |
+      Polling interval for release monitor loop.
+      Rendered runtime key: poll_interval_seconds.
     source: default
     type: int
     value: 900
@@ -205,19 +249,26 @@ settings:
     value: false
   state-dir:
     default: /var/lib/release-monitor-gcloud/state
-    description: State directory passed to app config.
+    description: |
+      State directory passed to app config.
+      Rendered runtime key: state_dir.
     source: default
     type: string
     value: /var/lib/release-monitor-gcloud/state
   temp-dir:
     default: /var/lib/release-monitor-gcloud/tmp
-    description: Temporary download directory passed to app config.
+    description: |
+      Temporary download directory passed to app config.
+      Rendered runtime key: temp_dir.
     source: default
     type: string
     value: /var/lib/release-monitor-gcloud/tmp
   webhook-shared-secret-secret-id:
     default: ""
-    description: Fallback secret ID containing key shared-secret.
+    description: |
+      Fallback secret ID containing key shared-secret.
+      Used when webhook relation does not provide credentials.
+      Rendered runtime key: webhook.shared_secret.
     source: default
     type: string
     value: ""
@@ -229,7 +280,10 @@ settings:
     value: 10
   webhook-url:
     default: ""
-    description: Fallback webhook URL when relation is absent.
+    description: |
+      Fallback webhook URL when relation is absent.
+      Rendered runtime key: webhook.url.
+      Example: https://release-filter.example/v1/releases
     source: default
     type: string
     value: ""

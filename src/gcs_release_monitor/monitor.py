@@ -258,7 +258,10 @@ class MonitorService:
             raise RuntimeError("nextcloud configuration is not available in webhook_only mode")
         remote_root = self.config.nextcloud.remote_dir
         organization = self.config.chain.organization
-        filename_with_generation = f"{filename}-g{obj.generation}"
+        release_tag = extract_release_tag(obj.name, obj.generation)
+        version_prefix = f"{release_tag}-"
+        versioned_filename = filename if filename.startswith(version_prefix) else f"{version_prefix}{filename}"
+        filename_with_generation = f"{versioned_filename}-g{obj.generation}"
         return "/".join(
             [
                 remote_root,

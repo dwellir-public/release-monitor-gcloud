@@ -29,6 +29,45 @@ def test_extract_release_tag_falls_back_to_generation() -> None:
     assert extract_release_tag("releases/latest/build.tar.gz", "177123") == "gcs-177123"
 
 
+def test_build_remote_path_prefixes_filename_with_release_tag() -> None:
+    service = object.__new__(MonitorService)
+    service.config = SimpleNamespace(
+        nextcloud=SimpleNamespace(remote_dir="EXTERNAL/FILESHARES/CLIENT_BINARIES"),
+        chain=SimpleNamespace(organization="megaeth"),
+    )
+    obj = _obj("v2.0.16/megaeth-rpc-v2.0.16.tar.gz", "123")
+
+    remote_path = service._build_remote_path("genesis.json", obj)
+
+    assert remote_path == "EXTERNAL/FILESHARES/CLIENT_BINARIES/megaeth/v2.0.16-genesis.json-g123"
+
+
+def test_build_remote_path_does_not_double_prefix_release_tag() -> None:
+    service = object.__new__(MonitorService)
+    service.config = SimpleNamespace(
+        nextcloud=SimpleNamespace(remote_dir="EXTERNAL/FILESHARES/CLIENT_BINARIES"),
+        chain=SimpleNamespace(organization="megaeth"),
+    )
+    obj = _obj("v2.0.16/megaeth-rpc-v2.0.16.tar.gz", "123")
+
+    remote_path = service._build_remote_path("v2.0.16-genesis.json", obj)
+
+    assert remote_path == "EXTERNAL/FILESHARES/CLIENT_BINARIES/megaeth/v2.0.16-genesis.json-g123"
+
+
+def test_build_remote_path_uses_generation_tag_when_version_missing() -> None:
+    service = object.__new__(MonitorService)
+    service.config = SimpleNamespace(
+        nextcloud=SimpleNamespace(remote_dir="EXTERNAL/FILESHARES/CLIENT_BINARIES"),
+        chain=SimpleNamespace(organization="megaeth"),
+    )
+    obj = _obj("releases/latest/build.tar.gz", "177123")
+
+    remote_path = service._build_remote_path("genesis.json", obj)
+
+    assert remote_path == "EXTERNAL/FILESHARES/CLIENT_BINARIES/megaeth/gcs-177123-genesis.json-g177123"
+
+
 def test_diff_snapshot_detects_add_and_remove() -> None:
     previous = Snapshot(bucket="bucket", captured_at="t0", objects={"a#1": _obj("a", "1")})
     current = Snapshot(bucket="bucket", captured_at="t1", objects={"b#1": _obj("b", "1")})

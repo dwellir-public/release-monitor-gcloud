@@ -70,7 +70,7 @@ def build_render_config(
         if not secrets.nextcloud_username:
             raise ReconcileError("missing required secret field username in nextcloud-credentials")
         if not secrets.nextcloud_app_password:
-            raise ReconcileError("missing required secret field app_password in nextcloud-credentials")
+            raise ReconcileError("missing required secret field app-password in nextcloud-credentials")
 
         nextcloud = {
             "base_url": _non_empty(config, "nextcloud-base-url"),

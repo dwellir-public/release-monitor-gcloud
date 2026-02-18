@@ -168,12 +168,14 @@ class ReleaseMonitorRuntime:
             nextcloud_content = self._read_secret_content(nextcloud_secret_id)
 
             username = str(nextcloud_content.get("username", "")).strip()
-            app_password = str(nextcloud_content.get("app_password", "")).strip()
-            share_password = str(nextcloud_content.get("share_password", "")).strip() or None
+            app_password = str(nextcloud_content.get("app-password", "")).strip()
+            share_password = str(nextcloud_content.get("share-password", "")).strip() or None
             if not username:
                 raise ReconcileError("missing required secret field username in nextcloud-credentials")
             if not app_password:
-                raise ReconcileError("missing required secret field app_password in nextcloud-credentials")
+                raise ReconcileError(
+                    "missing required secret field app-password in nextcloud-credentials"
+                )
 
         gcs_service_account_json: str | None = None
         anonymous = bool(config.get("gcs-anonymous", False))
@@ -184,10 +186,10 @@ class ReleaseMonitorRuntime:
             if not gcs_secret_id:
                 raise ReconcileError("missing required config: gcs-service-account-secret-id")
             gcs_content = self._read_secret_content(gcs_secret_id)
-            gcs_service_account_json = str(gcs_content.get("service_account_json", "")).strip()
+            gcs_service_account_json = str(gcs_content.get("service-account-json", "")).strip()
             if not gcs_service_account_json:
                 raise ReconcileError(
-                    "missing required secret field service_account_json in gcs-service-account"
+                    "missing required secret field service-account-json in gcs-service-account"
                 )
 
         return SecretBundle(

@@ -96,7 +96,7 @@ config:
       type: string
       default: ""
       description: |
-        Secret ID containing key service_account_json.
+        Secret ID containing key service-account-json.
         Used when gcs-anonymous=false and gcs-use-gcloud-cli=false.
         Rendered runtime key impact: writes gcs.credentials_file from secret content.
 
@@ -133,7 +133,7 @@ config:
       type: string
       default: ""
       description: |
-        Required when delivery-mode=full. Secret ID with username/app_password, optional share_password.
+        Required when delivery-mode=full. Secret ID with username/app-password, optional share-password.
         Rendered runtime keys sourced from this secret: nextcloud.username, nextcloud.app_password, nextcloud.share_password.
 
     webhook-url:

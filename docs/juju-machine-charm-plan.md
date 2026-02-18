@@ -86,9 +86,9 @@ Optional keys with defaults:
 
 ### Juju secrets consumed
 Secret IDs are configured in charm config and values are read from secret content fields matching app names:
-1. `nextcloud-credentials-secret-id` (required): keys `username`, `app_password`, optional `share_password`.
-2. `gcs-service-account-secret-id` (optional): key `service_account_json`.
-3. `webhook-shared-secret-secret-id` (optional fallback): key `shared_secret`.
+1. `nextcloud-credentials-secret-id` (required): keys `username`, `app-password`, optional `share-password`.
+2. `gcs-service-account-secret-id` (optional): key `service-account-json`.
+3. `webhook-shared-secret-secret-id` (optional fallback): key `shared-secret`.
 
 Secret handling rules:
 1. If `gcs-anonymous=false` and `gcs-use-gcloud-cli=false`, `gcs-service-account-secret-id` is required.
@@ -100,7 +100,7 @@ Secret handling rules:
 Requirer (`release-monitor-gcloud`) consumes:
 1. `protocol_version` required, value `release-monitor-webhook.v1`.
 2. `webhook_url` required for relation-provided endpoint.
-3. `secret_id` optional and preferred; points to Juju secret containing `shared_secret`.
+3. `secret_id` optional and preferred; points to Juju secret containing `shared-secret`.
 4. `webhook_secret` optional plaintext fallback for local/dev use only.
 
 Resolution rules:

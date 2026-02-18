@@ -65,10 +65,10 @@ Create required secrets (example commands):
 
 ```bash
 # Nextcloud credentials (required only for delivery-mode=full)
-juju add-secret nextcloud-creds username='<nextcloud-user>' app_password='<nextcloud-app-password>' share_password='<optional-share-password>'
+juju add-secret nextcloud-creds username='<nextcloud-user>' app-password='<nextcloud-app-password>' share-password='<optional-share-password>'
 
 # GCS service account (required unless gcs-anonymous=true or gcs-use-gcloud-cli=true)
-juju add-secret gcs-service-account service_account_json='{"type":"service_account", ...}'
+juju add-secret gcs-service-account service-account-json='{"type":"service_account", ...}'
 
 # Fallback webhook secret (required when relation does not provide secret)
 juju add-secret webhook-shared shared-secret='<webhook-shared-secret>'

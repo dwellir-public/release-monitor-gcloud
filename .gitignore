@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 state/
 config/local.yaml
+build/
+dist/
+*.charm
+*.egg-info/

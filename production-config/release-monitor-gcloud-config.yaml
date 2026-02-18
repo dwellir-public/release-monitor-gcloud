@@ -1,0 +1,241 @@
+application: release-monitor-gcloud
+application-config:
+  trust:
+    default: false
+    description: Does this application have access to trusted credentials
+    source: default
+    type: bool
+    value: false
+charm: release-monitor-gcloud
+settings:
+  artifact-selection-default-binary-patterns:
+    default: '[]'
+    description: JSON array of default binary extraction patterns.
+    source: default
+    type: string
+    value: '[]'
+  artifact-selection-default-genesis-patterns:
+    default: '[]'
+    description: JSON array of default genesis extraction patterns.
+    source: default
+    type: string
+    value: '[]'
+  artifact-selection-enabled:
+    default: true
+    description: Enable artifact extraction rules.
+    source: default
+    type: boolean
+    value: true
+  artifact-selection-fallback-to-archive:
+    default: true
+    description: Fallback to archive upload when extraction fails.
+    source: default
+    type: boolean
+    value: true
+  artifact-selection-rules:
+    default: '[]'
+    description: JSON array of artifact selection rule objects.
+    source: default
+    type: string
+    value: '[]'
+  chain-client-name:
+    default: ""
+    description: Optional client name.
+    source: default
+    type: string
+    value: ""
+  chain-common-name:
+    default: ""
+    description: Display/common name. Empty falls back to chain-repository.
+    source: default
+    type: string
+    value: ""
+  chain-extra-info:
+    default: ""
+    description: Optional release metadata context.
+    source: default
+    type: string
+    value: ""
+  chain-genesis-hashes:
+    default: '[]'
+    description: JSON array of genesis hashes.
+    source: default
+    type: string
+    value: '[]'
+  chain-ids:
+    default: '[]'
+    description: JSON array of integer chain IDs.
+    source: default
+    type: string
+    value: '[]'
+  chain-organization:
+    default: ""
+    description: Required. Source chain organization.
+    source: default
+    type: string
+    value: ""
+  chain-repository:
+    default: ""
+    description: Required. Source chain repository.
+    source: default
+    type: string
+    value: ""
+  delivery-mode:
+    default: full
+    description: Artifact delivery mode. full uploads to Nextcloud; webhook_only skips
+      upload and sends webhook only.
+    source: default
+    type: string
+    value: full
+  gcs-anonymous:
+    default: false
+    description: Use anonymous GCS access.
+    source: default
+    type: boolean
+    value: false
+  gcs-bucket:
+    default: ""
+    description: Required. GCS bucket name.
+    source: default
+    type: string
+    value: ""
+  gcs-include-content-types:
+    default: '[]'
+    description: JSON array of accepted MIME types.
+    source: default
+    type: string
+    value: '[]'
+  gcs-include-prefixes:
+    default: '[]'
+    description: JSON array of object name prefixes.
+    source: default
+    type: string
+    value: '[]'
+  gcs-include-suffixes:
+    default: '[]'
+    description: JSON array of candidate archive suffixes.
+    source: default
+    type: string
+    value: '[]'
+  gcs-service-account-secret-id:
+    default: ""
+    description: Secret ID containing key service_account_json.
+    source: default
+    type: string
+    value: ""
+  gcs-use-gcloud-cli:
+    default: false
+    description: Use local gcloud CLI auth mode.
+    source: default
+    type: boolean
+    value: false
+  log-level:
+    default: INFO
+    description: CLI log level for gcs-release-monitor.
+    source: default
+    type: string
+    value: INFO
+  nextcloud-base-url:
+    default: ""
+    description: Required when delivery-mode=full. Nextcloud base URL.
+    source: default
+    type: string
+    value: ""
+  nextcloud-create-public-share:
+    default: true
+    description: Create public share links for uploaded artifacts.
+    source: default
+    type: boolean
+    value: true
+  nextcloud-credentials-secret-id:
+    default: ""
+    description: Required when delivery-mode=full. Secret ID with username/app_password,
+      optional share_password.
+    source: default
+    type: string
+    value: ""
+  nextcloud-remote-dir:
+    default: ""
+    description: Required when delivery-mode=full. Remote Nextcloud root directory
+      for uploads.
+    source: default
+    type: string
+    value: ""
+  nextcloud-share-expire-days:
+    default: 0
+    description: Public share expiration in days; 0 omits field.
+    source: default
+    type: int
+    value: 0
+  nextcloud-share-permissions:
+    default: 1
+    description: Nextcloud share permission bitmask.
+    source: default
+    type: int
+    value: 1
+  nextcloud-verify-tls:
+    default: true
+    description: Verify TLS for Nextcloud API calls.
+    source: default
+    type: boolean
+    value: true
+  poll-interval-seconds:
+    default: 900
+    description: Polling interval for release monitor loop.
+    source: default
+    type: int
+    value: 900
+  release-defaults-due-date:
+    default: P2D
+    description: Default due date window (P1D, P2D, P5D).
+    source: default
+    type: string
+    value: P2D
+  release-defaults-priority:
+    default: 3
+    description: Default priority in webhook payload.
+    source: default
+    type: int
+    value: 3
+  release-defaults-urgent:
+    default: false
+    description: Default urgent flag in webhook payload.
+    source: default
+    type: boolean
+    value: false
+  state-dir:
+    default: /var/lib/release-monitor-gcloud/state
+    description: State directory passed to app config.
+    source: default
+    type: string
+    value: /var/lib/release-monitor-gcloud/state
+  temp-dir:
+    default: /var/lib/release-monitor-gcloud/tmp
+    description: Temporary download directory passed to app config.
+    source: default
+    type: string
+    value: /var/lib/release-monitor-gcloud/tmp
+  webhook-shared-secret-secret-id:
+    default: ""
+    description: Fallback secret ID containing key shared-secret.
+    source: default
+    type: string
+    value: ""
+  webhook-timeout-seconds:
+    default: 10
+    description: Webhook HTTP timeout.
+    source: default
+    type: int
+    value: 10
+  webhook-url:
+    default: ""
+    description: Fallback webhook URL when relation is absent.
+    source: default
+    type: string
+    value: ""
+  webhook-verify-tls:
+    default: true
+    description: Verify TLS for webhook endpoint.
+    source: default
+    type: boolean
+    value: true

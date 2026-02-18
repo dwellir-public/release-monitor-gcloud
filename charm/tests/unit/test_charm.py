@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess as sp
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,7 @@ from ops.testing import Context, Relation, Resource, Secret, State
 
 import constants as constants_module
 import release_monitor_gcloud as runtime_module
+import rendering as rendering_module
 from charm import (
     APP_DIR,
     CONFIG_PATH,
@@ -25,10 +27,18 @@ from charm import (
 
 
 class FakeRunner:
-    def __init__(self, *, venv_dir: Path):
+    def __init__(
+        self,
+        *,
+        venv_dir: Path,
+        ensurepip_available: bool = True,
+        pip_from_venv_creation: bool = True,
+    ):
         self.commands: list[list[str]] = []
         self._service_active = False
         self._venv_dir = venv_dir
+        self._ensurepip_available = ensurepip_available
+        self._pip_from_venv_creation = pip_from_venv_creation
 
     def __call__(
         self,
@@ -52,12 +62,22 @@ class FakeRunner:
         elif args[:3] == ["python3", "-m", "venv"]:
             (self._venv_dir / "bin").mkdir(parents=True, exist_ok=True)
             (self._venv_dir / "bin" / "python").write_text("#!/bin/sh\n", encoding="utf-8")
-            (self._venv_dir / "bin" / "pip").write_text("#!/bin/sh\n", encoding="utf-8")
-        elif len(args) >= 3 and args[1:3] == ["install", "--upgrade"]:
+            if self._pip_from_venv_creation:
+                (self._venv_dir / "bin" / "pip").write_text("#!/bin/sh\n", encoding="utf-8")
+        elif len(args) >= 3 and args[1:3] == ["-m", "ensurepip"]:
+            if self._ensurepip_available:
+                (self._venv_dir / "bin").mkdir(parents=True, exist_ok=True)
+                (self._venv_dir / "bin" / "pip").write_text("#!/bin/sh\n", encoding="utf-8")
+            else:
+                rc = 1
+                stderr = "/opt/release-monitor-gcloud/venv/bin/python: No module named ensurepip"
+        elif len(args) >= 4 and args[1:4] == ["-m", "pip", "install"]:
             (self._venv_dir / "bin").mkdir(parents=True, exist_ok=True)
             (self._venv_dir / "bin" / "gcs-release-monitor").write_text(
                 "#!/bin/sh\n", encoding="utf-8"
             )
+        elif args[:4] == ["apt-get", "install", "-y", "python3-venv"]:
+            self._pip_from_venv_creation = True
         elif len(args) >= 3 and args[1] == "-c" and "importlib.metadata" in args[2]:
             stdout = "0.1.0\n"
         elif len(args) >= 3 and args[1] == "-c" and "load_config" in args[2]:
@@ -294,6 +314,99 @@ def test_install_event_creates_runtime_dirs_and_unit_file(
     assert any(cmd[:3] == ["python3", "-m", "venv"] for cmd in runner.commands)
     assert any(cmd[:2] == ["groupadd", "--system"] for cmd in runner.commands)
     assert any(cmd[:2] == ["systemctl", "daemon-reload"] for cmd in runner.commands)
+
+
+def test_install_event_bootstraps_pip_when_missing_from_existing_venv(
+    ctx: Context,
+    base_config: dict[str, Any],
+    base_secrets: list[Secret],
+    patched_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    patched_paths["wheel_path"].write_bytes(b"wheel")
+    (patched_paths["venv_dir"] / "bin").mkdir(parents=True, exist_ok=True)
+    (patched_paths["venv_dir"] / "bin" / "python").write_text("#!/bin/sh\n", encoding="utf-8")
+
+    runner = FakeRunner(venv_dir=patched_paths["venv_dir"])
+    _patch_runner(monkeypatch, runner)
+
+    state = _state(
+        config=base_config,
+        secrets=base_secrets,
+        wheel_path=patched_paths["wheel_path"],
+    )
+    out = ctx.run(ctx.on.install(), state)
+
+    assert isinstance(out.unit_status, ActiveStatus)
+    assert any(len(cmd) >= 3 and cmd[1:3] == ["-m", "ensurepip"] for cmd in runner.commands)
+    assert any(len(cmd) >= 4 and cmd[1:4] == ["-m", "pip", "install"] for cmd in runner.commands)
+
+
+def test_install_event_recovers_when_ensurepip_missing(
+    ctx: Context,
+    base_config: dict[str, Any],
+    base_secrets: list[Secret],
+    patched_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    patched_paths["wheel_path"].write_bytes(b"wheel")
+    (patched_paths["venv_dir"] / "bin").mkdir(parents=True, exist_ok=True)
+    (patched_paths["venv_dir"] / "bin" / "python").write_text("#!/bin/sh\n", encoding="utf-8")
+
+    runner = FakeRunner(
+        venv_dir=patched_paths["venv_dir"],
+        ensurepip_available=False,
+        pip_from_venv_creation=False,
+    )
+    _patch_runner(monkeypatch, runner)
+
+    state = _state(
+        config=base_config,
+        secrets=base_secrets,
+        wheel_path=patched_paths["wheel_path"],
+    )
+    out = ctx.run(ctx.on.install(), state)
+
+    assert isinstance(out.unit_status, ActiveStatus)
+    assert any(cmd[:2] == ["apt-get", "update"] for cmd in runner.commands)
+    assert any(cmd[:4] == ["apt-get", "install", "-y", "python3-venv"] for cmd in runner.commands)
+    assert any(cmd[:4] == ["python3", "-m", "venv", "--clear"] for cmd in runner.commands)
+    assert any(len(cmd) >= 4 and cmd[1:4] == ["-m", "pip", "install"] for cmd in runner.commands)
+
+
+def test_install_event_normalizes_invalid_wheel_filename(
+    ctx: Context,
+    base_config: dict[str, Any],
+    base_secrets: list[Secret],
+    patched_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    invalid_wheel_path = patched_paths["wheel_path"].with_name("gcs_release_monitor.whl")
+    with zipfile.ZipFile(invalid_wheel_path, "w") as archive:
+        archive.writestr(
+            "gcs_release_monitor-0.1.0.dist-info/WHEEL",
+            "Wheel-Version: 1.0\nGenerator: test\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
+        )
+        archive.writestr(
+            "gcs_release_monitor-0.1.0.dist-info/METADATA",
+            "Metadata-Version: 2.1\nName: gcs-release-monitor\nVersion: 0.1.0\n",
+        )
+
+    runner = FakeRunner(venv_dir=patched_paths["venv_dir"])
+    _patch_runner(monkeypatch, runner)
+
+    state = _state(
+        config=base_config,
+        secrets=base_secrets,
+        wheel_path=invalid_wheel_path,
+    )
+    out = ctx.run(ctx.on.install(), state)
+
+    assert isinstance(out.unit_status, ActiveStatus)
+    pip_install = next(
+        cmd for cmd in runner.commands if len(cmd) >= 4 and cmd[1:4] == ["-m", "pip", "install"]
+    )
+    assert pip_install[-1].endswith("gcs_release_monitor-0.1.0-py3-none-any.whl")
 
 
 def test_missing_release_monitor_wheel_blocks(
@@ -594,6 +707,24 @@ def test_run_once_and_dry_run_actions_invoke_expected_flags(
 
     assert any("--once" in cmd and "--dry-run" not in cmd for cmd in commands)
     assert any("--once" in cmd and "--dry-run" in cmd for cmd in commands)
+
+
+def test_render_service_unit_uses_embedded_fallback_when_template_missing(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        rendering_module,
+        "SERVICE_UNIT_TEMPLATE_PATH",
+        Path("/tmp/does-not-exist-release-monitor-gcloud.service.tmpl"),
+    )
+
+    unit_text = rendering_module.render_service_unit(log_level="INFO")
+
+    assert "Description=release-monitor-gcloud service" in unit_text
+    assert (
+        "ExecStart=/opt/release-monitor-gcloud/venv/bin/gcs-release-monitor"
+        " --config /etc/release-monitor-gcloud/config.yaml --log-level INFO"
+    ) in unit_text
 
 
 def test_gcs_credentials_path_constant_points_inside_app_dir():

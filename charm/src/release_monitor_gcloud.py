@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import shutil
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -252,6 +253,7 @@ class ReleaseMonitorRuntime:
 
         if not wheel_path.exists() or not wheel_path.is_file():
             raise ReconcileError(f"unreadable wheel resource: {wheel_path}", stop_service=False)
+        wheel_path = self._normalized_wheel_path(wheel_path)
 
         digest = hashlib.sha256(wheel_path.read_bytes()).hexdigest()
         python_bin = c.VENV_DIR / "bin" / "python"
@@ -261,9 +263,48 @@ class ReleaseMonitorRuntime:
         if not python_bin.exists():
             self._charm._run(["python3", "-m", "venv", str(c.VENV_DIR)])
 
+        if not python_bin.exists():
+            raise ReconcileError(
+                f"failed to create virtualenv interpreter: {python_bin}", stop_service=False
+            )
+
+        if not pip_bin.exists():
+            ensurepip = self._charm._run(
+                [str(python_bin), "-m", "ensurepip", "--upgrade"],
+                check=False,
+                capture_output=True,
+            )
+            if ensurepip.returncode != 0:
+                self._ensure_python3_venv_package()
+                self._charm._run(["python3", "-m", "venv", "--clear", str(c.VENV_DIR)])
+                if not pip_bin.exists():
+                    detail = self._command_failure_detail(ensurepip)
+                    raise ReconcileError(
+                        f"failed to bootstrap pip in virtualenv: {detail}",
+                        stop_service=False,
+                    )
+
         install_required = digest != str(self._charm._stored.wheel_digest) or not cli_bin.exists()
         if install_required:
-            self._charm._run([str(pip_bin), "install", "--upgrade", "--force-reinstall", str(wheel_path)])
+            install = self._charm._run(
+                [
+                    str(python_bin),
+                    "-m",
+                    "pip",
+                    "install",
+                    "--upgrade",
+                    "--force-reinstall",
+                    str(wheel_path),
+                ],
+                check=False,
+                capture_output=True,
+            )
+            if install.returncode != 0:
+                detail = self._command_failure_detail(install)
+                raise ReconcileError(
+                    f"failed to install wheel into virtualenv: {detail}",
+                    stop_service=False,
+                )
 
         version = self._installed_package_version(python_bin)
         if not version:
@@ -277,6 +318,96 @@ class ReleaseMonitorRuntime:
         if result.returncode != 0:
             raise ReconcileError("failed to read installed wheel metadata", stop_service=False)
         return str(result.stdout).strip()
+
+    def _ensure_python3_venv_package(self) -> None:
+        update = self._charm._run(["apt-get", "update"], check=False, capture_output=True)
+        if update.returncode != 0:
+            detail = self._command_failure_detail(update)
+            raise ReconcileError(f"failed to install python3-venv: {detail}", stop_service=False)
+
+        install = self._charm._run(
+            ["apt-get", "install", "-y", "python3-venv"],
+            check=False,
+            capture_output=True,
+        )
+        if install.returncode != 0:
+            detail = self._command_failure_detail(install)
+            raise ReconcileError(f"failed to install python3-venv: {detail}", stop_service=False)
+
+    def _command_failure_detail(self, result: Any) -> str:
+        return (
+            tail_text(str(result.stderr), max_lines=20)
+            or tail_text(str(result.stdout), max_lines=20)
+            or f"exit={result.returncode}"
+        )
+
+    def _normalized_wheel_path(self, wheel_path: Path) -> Path:
+        if self._is_valid_wheel_filename(wheel_path.name):
+            return wheel_path
+
+        normalized_name = self._derived_wheel_filename(wheel_path)
+        normalized_path = c.TEMP_DIR / normalized_name
+        shutil.copy2(wheel_path, normalized_path)
+        return normalized_path
+
+    def _is_valid_wheel_filename(self, filename: str) -> bool:
+        if not filename.endswith(".whl"):
+            return False
+        parts = filename[:-4].split("-")
+        return len(parts) in (5, 6) and all(part.strip() for part in parts)
+
+    def _derived_wheel_filename(self, wheel_path: Path) -> str:
+        try:
+            with zipfile.ZipFile(wheel_path) as archive:
+                dist_info_dirs = sorted(
+                    {
+                        entry.split("/", 1)[0]
+                        for entry in archive.namelist()
+                        if entry.endswith(".dist-info/WHEEL")
+                    }
+                )
+                if len(dist_info_dirs) != 1:
+                    raise ReconcileError(
+                        f"wheel metadata malformed: expected one .dist-info directory in {wheel_path.name}",
+                        stop_service=False,
+                    )
+
+                dist_info = dist_info_dirs[0]
+                if not dist_info.endswith(".dist-info"):
+                    raise ReconcileError(
+                        f"wheel metadata malformed: invalid dist-info directory {dist_info}",
+                        stop_service=False,
+                    )
+
+                dist_and_version = dist_info[: -len(".dist-info")]
+                wheel_meta = archive.read(f"{dist_info}/WHEEL").decode("utf-8", errors="replace")
+        except ReconcileError:
+            raise
+        except (OSError, zipfile.BadZipFile, KeyError) as exc:
+            raise ReconcileError(
+                f"failed to read wheel metadata from {wheel_path.name}: {exc}",
+                stop_service=False,
+            ) from exc
+
+        tags = [
+            line.split(":", 1)[1].strip()
+            for line in wheel_meta.splitlines()
+            if line.startswith("Tag:")
+        ]
+        if not tags:
+            raise ReconcileError(
+                f"wheel metadata malformed: missing Tag in WHEEL for {wheel_path.name}",
+                stop_service=False,
+            )
+        tag_parts = tags[0].split("-")
+        if len(tag_parts) != 3:
+            raise ReconcileError(
+                f"wheel metadata malformed: invalid tag '{tags[0]}' in {wheel_path.name}",
+                stop_service=False,
+            )
+
+        python_tag, abi_tag, platform_tag = tag_parts
+        return f"{dist_and_version}-{python_tag}-{abi_tag}-{platform_tag}.whl"
 
     def _write_gcs_credentials_if_needed(self, secrets: SecretBundle) -> str | None:
         if secrets.gcs_service_account_json is None:

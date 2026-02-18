@@ -10,6 +10,31 @@ import yaml
 import constants as c
 from models import ReconcileError, SecretBundle, WebhookResolution
 
+SERVICE_UNIT_TEMPLATE_PATH = (
+    Path(__file__).resolve().parent.parent / "templates" / "release-monitor-gcloud.service.tmpl"
+)
+DEFAULT_SERVICE_UNIT_TEMPLATE = """[Unit]
+Description=release-monitor-gcloud service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=release-monitor
+Group=release-monitor
+WorkingDirectory=/var/lib/release-monitor-gcloud
+ExecStart=${exec_start}
+Restart=always
+RestartSec=10
+StateDirectory=release-monitor-gcloud
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
+"""
+
 
 def parse_json_array_option(raw: str, option_name: str) -> list[Any]:
     try:
@@ -154,11 +179,8 @@ def build_render_config(
 
 
 def render_service_unit(*, log_level: str) -> str:
-    template = Template(
-        (Path(__file__).resolve().parent.parent / "templates" / "release-monitor-gcloud.service.tmpl").read_text(
-            encoding="utf-8"
-        )
-    )
+    template_text = _load_service_unit_template()
+    template = Template(template_text)
     exec_start = (
         f"{c.VENV_DIR}/bin/gcs-release-monitor --config {c.CONFIG_PATH} --log-level {log_level}"
     )
@@ -186,3 +208,10 @@ def tail_text(raw: str, *, max_lines: int) -> str:
     if not lines:
         return ""
     return "\n".join(lines[-max_lines:])
+
+
+def _load_service_unit_template() -> str:
+    try:
+        return SERVICE_UNIT_TEMPLATE_PATH.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return DEFAULT_SERVICE_UNIT_TEMPLATE

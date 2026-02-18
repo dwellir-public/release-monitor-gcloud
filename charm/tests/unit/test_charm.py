@@ -316,6 +316,41 @@ def test_install_event_creates_runtime_dirs_and_unit_file(
     assert any(cmd[:2] == ["systemctl", "daemon-reload"] for cmd in runner.commands)
 
 
+def test_install_event_chowns_rendered_config_for_service_user(
+    ctx: Context,
+    base_config: dict[str, Any],
+    base_secrets: list[Secret],
+    patched_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    patched_paths["wheel_path"].write_bytes(b"wheel")
+    runner = FakeRunner(venv_dir=patched_paths["venv_dir"])
+    _patch_runner(monkeypatch, runner)
+
+    chown_calls: list[tuple[Path, str | None, str | None]] = []
+
+    def _record_chown(path: str | Path, user: str | None = None, group: str | None = None):
+        chown_calls.append((Path(path), user, group))
+
+    monkeypatch.setattr(runtime_module.shutil, "chown", _record_chown)
+
+    state = _state(
+        config=base_config,
+        secrets=base_secrets,
+        wheel_path=patched_paths["wheel_path"],
+    )
+    out = ctx.run(ctx.on.install(), state)
+
+    assert isinstance(out.unit_status, ActiveStatus)
+    assert any(
+        path == patched_paths["config_path"]
+        and user == constants_module.APP_USER
+        and group == constants_module.APP_GROUP
+        for path, user, group in chown_calls
+    )
+    assert patched_paths["config_path"].stat().st_mode & 0o777 == 0o640
+
+
 def test_install_event_bootstraps_pip_when_missing_from_existing_venv(
     ctx: Context,
     base_config: dict[str, Any],

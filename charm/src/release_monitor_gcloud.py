@@ -47,10 +47,13 @@ class ReleaseMonitorRuntime:
         candidate_path = Path(f"{c.CONFIG_PATH}.new")
         config_yaml = dump_yaml(config_map)
         candidate_path.write_text(config_yaml, encoding="utf-8")
+        shutil.chown(candidate_path, user=c.APP_USER, group=c.APP_GROUP)
         os.chmod(candidate_path, 0o640)
 
         self._charm._validate_candidate_config(candidate_path)
         os.replace(candidate_path, c.CONFIG_PATH)
+        shutil.chown(c.CONFIG_PATH, user=c.APP_USER, group=c.APP_GROUP)
+        os.chmod(c.CONFIG_PATH, 0o640)
 
         unit_text = self._install_systemd_unit(str(self._charm.config.get("log-level", "INFO")))
 

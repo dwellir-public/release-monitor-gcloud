@@ -157,15 +157,15 @@ settings:
       Secret ID containing key service-account-json.
       Used when gcs-anonymous=false and gcs-use-gcloud-cli=false.
       Rendered runtime key impact: writes gcs.credentials_file from secret content.
-    source: default
+    source: user
     type: string
-    value: "secret:d6arj90e9vupqhq8th60"
+    value: secret:d6arj90e9vupqhq8th60
   gcs-use-gcloud-cli:
     default: false
     description: Use local gcloud CLI auth mode.
-    source: user
+    source: default
     type: boolean
-    value: true
+    value: false
   log-level:
     default: INFO
     description: CLI log level for gcs-release-monitor.
@@ -177,9 +177,9 @@ settings:
     description: |
       Required when delivery-mode=full. Nextcloud base URL.
       Rendered runtime key: nextcloud.base_url.
-    source: default
+    source: user
     type: string
-    value: "https://nextcloud.dwellir.com"
+    value: https://nextcloud.dwellir.com
   nextcloud-create-public-share:
     default: true
     description: Create public share links for uploaded artifacts.
@@ -191,18 +191,18 @@ settings:
     description: |
       Required when delivery-mode=full. Secret ID with username/app-password, optional share-password.
       Rendered runtime keys sourced from this secret: nextcloud.username, nextcloud.app_password, nextcloud.share_password.
-    source: default
+    source: user
     type: string
-    value: "secret:d6argfge9vupqhq8th5g"
+    value: secret:d6argfge9vupqhq8th5g
   nextcloud-remote-dir:
     default: ""
     description: |
       Required when delivery-mode=full. Remote Nextcloud root directory for uploads.
       Rendered runtime key: nextcloud.remote_dir.
       Example: EXTERNAL/FILESHARES/CLIENT_BINARIES
-    source: default
+    source: user
     type: string
-    value: "EXTERNAL/FILESHARES/CLIENT_BINARIES"
+    value: EXTERNAL/FILESHARES/CLIENT_BINARIES
   nextcloud-share-expire-days:
     default: 0
     description: Public share expiration in days; 0 omits field.

@@ -288,7 +288,7 @@ class MonitorService:
         if not share_url or not artifact_name:
             return None
         share_base = share_url.split("?", maxsplit=1)[0].rstrip("/")
-        return f"{share_base}/download/{quote(artifact_name, safe="")}"
+        return f"{share_base}/download/{quote(artifact_name, safe='')}"
 
     def _build_release_payload(
         self,

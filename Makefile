@@ -14,8 +14,8 @@ CHARM_DIR ?= charm
 JUJU ?= juju
 JUJU_MODEL ?= local
 APP_NAME ?= release-monitor-gcloud
-CHARM_FILE ?= $(shell ls -1t $(CHARM_DIR)/release-monitor-gcloud_*.charm 2>/dev/null | head -n 1)
-WHEEL_FILE ?= $(shell ls -1t $(DIST_DIR)/gcs_release_monitor-*.whl 2>/dev/null | head -n 1)
+CHARM_FILE ?= $(shell ls -1t ./$(CHARM_DIR)/release-monitor-gcloud_*.charm 2>/dev/null | head -n 1)
+WHEEL_FILE ?= $(shell ls -1t ./$(DIST_DIR)/gcs_release_monitor-*.whl 2>/dev/null | head -n 1)
 RELEASE_MONITOR_WHEEL ?=
 
 .PHONY: \
@@ -139,12 +139,12 @@ charm-path:
 
 charm-deploy:
 	@test -n "$(CHARM_FILE)" || (echo "No charm artifact found. Run: make charm-pack"; exit 1)
-	$(JUJU) deploy --model "$(JUJU_MODEL)" "$(CHARM_FILE)" --application "$(APP_NAME)" --num-units 1
+	$(JUJU) deploy --model "$(JUJU_MODEL)" "$(CHARM_FILE)" "$(APP_NAME)" --num-units 1
 
 charm-deploy-with-wheel:
 	@test -n "$(CHARM_FILE)" || (echo "No charm artifact found. Run: make charm-pack"; exit 1)
 	@test -n "$(WHEEL_FILE)" || (echo "No wheel found. Run: make wheel"; exit 1)
-	$(JUJU) deploy --model "$(JUJU_MODEL)" "$(CHARM_FILE)" --application "$(APP_NAME)" --num-units 1 --resource release-monitor-wheel="$(WHEEL_FILE)"
+	$(JUJU) deploy --model "$(JUJU_MODEL)" "$(CHARM_FILE)" "$(APP_NAME)" --num-units 1 --resource release-monitor-wheel="$(WHEEL_FILE)"
 
 charm-refresh:
 	@test -n "$(CHARM_FILE)" || (echo "No charm artifact found. Run: make charm-pack"; exit 1)

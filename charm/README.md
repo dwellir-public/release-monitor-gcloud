@@ -105,3 +105,29 @@ The charm supports:
    - uses GCS-based links in payload data
 
 For local tests, use `webhook_only` unless the test explicitly requires Nextcloud upload.
+
+## Polling health
+
+The daemon writes `/var/lib/release-monitor-gcloud/health.json` atomically after
+each completed polling cycle. On reconciliation (including Juju's periodic
+`update-status` hook), the charm reports failures with a short message such as
+`Polling failed: RefreshError`. Full exception details stay in the service journal:
+
+```bash
+juju ssh -m <model> release-monitor-gcloud/0 \
+  'sudo journalctl -u release-monitor-gcloud.service -n 100 --no-pager'
+```
+
+Failures in discovery, downloads, artifact processing, Nextcloud or webhook
+delivery block the unit while the daemon continues retrying. A complete successful
+cycle, including a poll finding no new releases, restores active status.
+Missing, malformed or stale reports also block the unit. Reports older than twice
+the polling interval plus five minutes are stale; unusually long downloads may
+therefore temporarily report stale health. A fresh report from a starting process
+shows waiting until its first result. Reports from an earlier process cannot mark
+the current process healthy. Status updates follow the model's update-status
+cadence, rather than appearing immediately after each poll.
+
+Refresh the charm **and** attach the wheel built from the same source when
+installing this feature; older wheels do not support `--health-file`.
+`run-once` and dry-run actions do not overwrite the daemon's health report.

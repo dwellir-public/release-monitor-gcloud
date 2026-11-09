@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import subprocess as sp
+import json
+import time
 import zipfile
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
-from ops.model import ActiveStatus, BlockedStatus
+from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
 from ops.testing import Context, Relation, Resource, Secret, State
 
 import constants as constants_module
@@ -84,6 +86,8 @@ class FakeRunner:
             rc = 0
         elif args[:3] == ["systemctl", "is-active", "--quiet"]:
             rc = 0 if self._service_active else 3
+        elif args[:3] == ["systemctl", "show", "--property=MainPID"]:
+            stdout = "123\n"
         elif args[:2] == ["systemctl", "start"]:
             self._service_active = True
         elif args[:2] == ["systemctl", "restart"]:
@@ -153,6 +157,11 @@ def patched_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, 
     venv_dir = tmp_path / "opt" / "release-monitor-gcloud" / "venv"
 
     monkeypatch.setattr(constants_module, "APP_DIR", app_dir)
+    monkeypatch.setattr(constants_module, "HEALTH_PATH", app_dir / "health.json")
+    app_dir.mkdir(parents=True)
+    (app_dir / "health.json").write_text(json.dumps({
+        "status": "ok", "updated_at": time.time(), "pid": 123,
+    }))
     monkeypatch.setattr(constants_module, "STATE_DIR", state_dir)
     monkeypatch.setattr(constants_module, "TEMP_DIR", temp_dir)
     monkeypatch.setattr(constants_module, "SECRETS_DIR", secrets_dir)
@@ -765,3 +774,46 @@ def test_render_service_unit_uses_embedded_fallback_when_template_missing(
 def test_gcs_credentials_path_constant_points_inside_app_dir():
     assert str(GCS_CREDENTIALS_PATH).startswith(str(APP_DIR))
     assert str(CONFIG_PATH).endswith("config.yaml")
+
+
+@pytest.mark.parametrize(
+    "report, expected_type, message",
+    [
+        ({"status": "ok"}, ActiveStatus, "service active (webhook: config-fallback)"),
+        ({"status": "failed", "error_type": "RefreshError"}, BlockedStatus,
+         "Polling failed: RefreshError"),
+        ({"status": "failed", "error_type": "HTTPStatusError"}, BlockedStatus,
+         "Polling failed: HTTPStatusError"),
+        ({"status": "failed", "error_type": "secret in exception text"}, BlockedStatus,
+         "Polling failed: Error"),
+        ({"status": "starting"}, WaitingStatus, "Waiting for first polling result"),
+        ({"status": "ok", "pid": 456}, WaitingStatus,
+         "Waiting for current polling process"),
+        ({"status": "ok", "updated_at": 1}, BlockedStatus,
+         "Polling health report is stale"),
+        ({"status": "ok", "updated_at": float("nan")}, BlockedStatus,
+         "Polling health report invalid"),
+        ({"status": "unknown"}, BlockedStatus, "Polling health report invalid"),
+        (None, BlockedStatus, "Polling health report missing"),
+    ],
+)
+def test_polling_health_in_update_status(
+    ctx, base_config, base_secrets, patched_paths, monkeypatch, report, expected_type, message,
+):
+    patched_paths["wheel_path"].write_bytes(b"wheel")
+    runner = FakeRunner(venv_dir=patched_paths["venv_dir"])
+    _patch_runner(monkeypatch, runner)
+    health_path = constants_module.HEALTH_PATH
+    if report is None:
+        health_path.unlink()
+    else:
+        health_path.write_text(json.dumps({"updated_at": time.time(), "pid": 123, **report}))
+    state = _state(config=base_config, secrets=base_secrets, wheel_path=patched_paths["wheel_path"])
+    out = ctx.run(ctx.on.update_status(), state)
+    assert isinstance(out.unit_status, expected_type)
+    assert out.unit_status.message == message
+    assert runner._service_active
+    if report and report.get("status") == "failed":
+        health_path.write_text(json.dumps({"updated_at": time.time(), "pid": 123, "status": "ok"}))
+        recovered = ctx.run(ctx.on.update_status(), out)
+        assert isinstance(recovered.unit_status, ActiveStatus)

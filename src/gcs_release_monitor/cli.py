@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+from pathlib import Path
 
 from .config import ConfigError, load_config
 from .monitor import MonitorService
@@ -17,6 +18,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Discover, download, and select artifacts without uploading, webhooking, or writing state",
     )
     parser.add_argument("--log-level", default="INFO", help="Logging level")
+    parser.add_argument("--health-file", type=Path, help="Daemon polling health report path")
     return parser
 
 
@@ -41,7 +43,7 @@ def main() -> int:
         if args.once:
             service.run_once(dry_run=args.dry_run)
         else:
-            service.run_forever(dry_run=False)
+            service.run_forever(dry_run=False, health_file=args.health_file)
         return 0
     finally:
         service.close()

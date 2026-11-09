@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import json
+import os
 import re
 import tempfile
 import time
@@ -30,7 +32,7 @@ class MonitorService:
         self.webhook = WebhookClient(config.webhook)
         self.store = StateStore(config.state_dir)
 
-    def run_forever(self, dry_run: bool = False) -> None:
+    def run_forever(self, dry_run: bool = False, *, health_file: Path | None = None) -> None:
         if not dry_run:
             self.store.bootstrap()
         logger.info(
@@ -38,12 +40,27 @@ class MonitorService:
             self.config.poll_interval_seconds,
             dry_run,
         )
+        self._write_health(health_file, "starting")
         while True:
             try:
                 self.run_once(dry_run=dry_run)
-            except Exception:
+            except Exception as exc:
                 logger.exception("Polling cycle failed")
+                self._write_health(health_file, "failed", type(exc).__name__)
+            else:
+                self._write_health(health_file, "ok")
             time.sleep(self.config.poll_interval_seconds)
+
+    @staticmethod
+    def _write_health(path: Path | None, status: str, error_type: str = "") -> None:
+        """Publish an atomic report without exception text or credentials."""
+        if path is None:
+            return
+        report = {"status": status, "error_type": error_type, "updated_at": time.time(),
+                  "pid": os.getpid()}
+        candidate = path.with_suffix(".new")
+        candidate.write_text(json.dumps(report), encoding="utf-8")
+        candidate.replace(path)
 
     def run_once(self, dry_run: bool = False) -> None:
         if not dry_run:

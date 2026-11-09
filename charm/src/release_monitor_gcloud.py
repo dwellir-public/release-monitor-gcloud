@@ -4,13 +4,15 @@ import hashlib
 import json
 import os
 import shutil
+import math
+import time
 import zipfile
 from pathlib import Path
 from typing import Any
 
 import yaml
 from ops.charm import ActionEvent
-from ops.model import ActiveStatus, ModelError, SecretNotFoundError
+from ops.model import ActiveStatus, BlockedStatus, WaitingStatus, ModelError, SecretNotFoundError
 
 import constants as c
 from models import ReconcileError, SecretBundle, WheelInstall
@@ -68,7 +70,39 @@ class ReleaseMonitorRuntime:
         self._charm._stored.wheel_digest = wheel.digest
         self._charm._stored.wheel_version = wheel.version
         self._charm._stored.webhook_source = webhook.source
-        self._charm.unit.status = ActiveStatus(f"service active (webhook: {webhook.source})")
+        self._charm.unit.status = self._polling_status()
+
+    def _polling_status(self) -> ActiveStatus | BlockedStatus | WaitingStatus:
+        """Translate daemon health into concise status without exposing error details."""
+        try:
+            report = json.loads(c.HEALTH_PATH.read_text(encoding="utf-8"))
+            updated_at = float(report["updated_at"])
+            status = report["status"]
+            pid = int(report["pid"])
+            if not math.isfinite(updated_at) or status not in {"starting", "ok", "failed"}:
+                raise ValueError("invalid health report")
+        except FileNotFoundError:
+            return BlockedStatus("Polling health report missing")
+        except (OSError, ValueError, KeyError, TypeError, OverflowError):
+            return BlockedStatus("Polling health report invalid")
+        max_age = 2 * int(self._charm.config.get("poll-interval-seconds", 900)) + 300
+        age = time.time() - updated_at
+        if age < -60 or age > max_age:
+            return BlockedStatus("Polling health report is stale")
+        result = self._charm._run(
+            ["systemctl", "show", "--property=MainPID", "--value", c.SERVICE_NAME],
+            check=False, capture_output=True,
+        )
+        if result.returncode != 0 or str(result.stdout).strip() != str(pid):
+            return WaitingStatus("Waiting for current polling process")
+        if status == "starting":
+            return WaitingStatus("Waiting for first polling result")
+        if status == "failed":
+            error_type = report.get("error_type", "")
+            if not isinstance(error_type, str) or not error_type.isidentifier():
+                error_type = "Error"
+            return BlockedStatus(f"Polling failed: {error_type[:48]}")
+        return ActiveStatus(f"service active (webhook: {self._charm._stored.webhook_source})")
 
     def stop_service(self) -> None:
         self._charm._run(["systemctl", "disable", "--now", c.SERVICE_NAME], check=False)

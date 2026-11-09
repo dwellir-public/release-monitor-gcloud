@@ -10,6 +10,7 @@ PROTOCOL_VERSION = "release-monitor-webhook.v1"
 APP_USER = "release-monitor"
 APP_GROUP = "release-monitor"
 APP_DIR = Path("/var/lib/release-monitor-gcloud")
+HEALTH_PATH = APP_DIR / "health.json"
 STATE_DIR = APP_DIR / "state"
 TEMP_DIR = APP_DIR / "tmp"
 SECRETS_DIR = APP_DIR / "secrets"

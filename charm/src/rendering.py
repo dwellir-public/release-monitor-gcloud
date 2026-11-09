@@ -183,6 +183,7 @@ def render_service_unit(*, log_level: str) -> str:
     template = Template(template_text)
     exec_start = (
         f"{c.VENV_DIR}/bin/gcs-release-monitor --config {c.CONFIG_PATH} --log-level {log_level}"
+        f" --health-file {c.HEALTH_PATH}"
     )
     return template.substitute(exec_start=exec_start)
 

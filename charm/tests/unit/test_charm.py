@@ -817,3 +817,52 @@ def test_polling_health_in_update_status(
         health_path.write_text(json.dumps({"updated_at": time.time(), "pid": 123, "status": "ok"}))
         recovered = ctx.run(ctx.on.update_status(), out)
         assert isinstance(recovered.unit_status, ActiveStatus)
+
+
+@pytest.mark.parametrize("changed", [True, False])
+@pytest.mark.parametrize("restart_fails", [True, False])
+def test_gcs_secret_rotation_reloads_service(
+    ctx, base_config, base_secrets, patched_paths, monkeypatch, changed, restart_fails,
+):
+    """Rotate a consumed secret with config unchanged, then reconcile again."""
+    from dataclasses import replace
+
+    patched_paths["wheel_path"].write_bytes(b"wheel")
+    runner = FakeRunner(venv_dir=patched_paths["venv_dir"])
+    _patch_runner(monkeypatch, runner)
+    initial = _state(config=base_config, secrets=base_secrets,
+                     wheel_path=patched_paths["wheel_path"])
+    installed = ctx.run(ctx.on.install(), initial)
+    assert isinstance(installed.unit_status, ActiveStatus)
+    runner.commands.clear()
+
+    original = next(secret for secret in installed.secrets if secret.id == "secret:gcs")
+    content = ('{"type":"service_account","private_key_id":"rotated"}' if changed
+               else original.tracked_content["service-account-json"])
+    rotated = replace(original, latest_content={"service-account-json": content})
+    state = replace(installed, secrets=[
+        rotated if secret.id == original.id else secret for secret in installed.secrets
+    ])
+    if restart_fails:
+        def fail_restart(charm, args, **kwargs):
+            if args[:2] == ["systemctl", "restart"]:
+                runner.commands.append(args)
+                raise sp.CalledProcessError(1, args)
+            return runner(charm, args, **kwargs)
+        monkeypatch.setattr(ReleaseMonitorGcloudCharm, "_run", fail_restart)
+
+    out = ctx.run(ctx.on.secret_changed(rotated), state)
+    assert constants_module.GCS_CREDENTIALS_PATH.read_text() == content
+    assert sum(cmd[:2] == ["systemctl", "restart"] for cmd in runner.commands) == int(changed)
+    assert isinstance(out.unit_status, BlockedStatus if changed and restart_fails else ActiveStatus)
+
+    _patch_runner(monkeypatch, runner)
+    runner.commands.clear()
+    reconciled = ctx.run(ctx.on.update_status(), out)
+    assert isinstance(reconciled.unit_status, ActiveStatus)
+    assert sum(cmd[:2] == ["systemctl", "restart"] for cmd in runner.commands) == int(
+        changed and restart_fails
+    )
+    runner.commands.clear()
+    ctx.run(ctx.on.update_status(), reconciled)
+    assert not any(cmd[:2] == ["systemctl", "restart"] for cmd in runner.commands)

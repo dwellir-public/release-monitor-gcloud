@@ -131,3 +131,15 @@ cadence, rather than appearing immediately after each poll.
 Refresh the charm **and** attach the wheel built from the same source when
 installing this feature; older wheels do not support `--health-file`.
 `run-once` and dry-run actions do not overwrite the daemon's health report.
+
+## GCS credential rotation
+
+Updating the configured, granted GCS service-account secret with `juju update-secret`
+triggers reconciliation. The credential content contributes to the runtime
+fingerprint, so changed credentials restart the monitor to reload its GCS client.
+A new revision with identical content does not restart the service. If a restart
+fails, the next reconciliation retries it.
+
+After upgrading from an older charm, the first reconciliation restarts the service
+once to adopt the expanded fingerprint. This fix requires only a charm refresh;
+the monitor wheel does not need rebuilding.

@@ -59,7 +59,12 @@ class ReleaseMonitorRuntime:
 
         unit_text = self._install_systemd_unit(str(self._charm.config.get("log-level", "INFO")))
 
-        fingerprint = self._compute_fingerprint(config_yaml, unit_text, wheel.digest)
+        fingerprint = self._compute_fingerprint(
+            config_yaml,
+            unit_text,
+            wheel.digest,
+            gcs_service_account_json=secrets.gcs_service_account_json,
+        )
         restart_required = fingerprint != str(self._charm._stored.config_fingerprint)
 
         self._ensure_service_running(restart=restart_required)
@@ -468,12 +473,23 @@ class ReleaseMonitorRuntime:
             self._charm._run(["systemctl", "daemon-reload"])
         return unit_text
 
-    def _compute_fingerprint(self, config_yaml: str, unit_text: str, wheel_digest: str) -> str:
+    def _compute_fingerprint(
+        self,
+        config_yaml: str,
+        unit_text: str,
+        wheel_digest: str,
+        *,
+        gcs_service_account_json: str | None,
+    ) -> str:
+        """Include file-backed credentials so rotation reloads the GCS client."""
         material = json.dumps(
             {
                 "config": config_yaml,
                 "unit": unit_text,
                 "wheel_digest": wheel_digest,
+                "gcs_credentials_digest": hashlib.sha256(
+                    (gcs_service_account_json or "").encode("utf-8")
+                ).hexdigest(),
             },
             sort_keys=True,
         )
